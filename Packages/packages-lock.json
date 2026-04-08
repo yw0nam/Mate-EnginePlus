@@ -275,6 +275,15 @@
       },
       "url": "https://packages.unity.com"
     },
+    "com.youngwoocho02.unity-cli-connector": {
+      "version": "https://github.com/youngwoocho02/unity-cli.git?path=unity-connector",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {
+        "com.unity.nuget.newtonsoft-json": "3.2.1"
+      },
+      "hash": "26dd6bde47db13e7351cdb8d6f3fa44617fee299"
+    },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",
       "depth": 0,
