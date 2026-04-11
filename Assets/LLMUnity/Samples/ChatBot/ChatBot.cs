@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -293,6 +294,10 @@ namespace LLMUnitySamples
 
             if (UseDmp)
             {
+                // Track new session for auto-title generation
+                _lastSentMessage = message;
+                _wasNewSession = string.IsNullOrEmpty(dmpClient.SessionId);
+
                 // Reset TTS player and keyframe bridge for new turn
                 if (ttsPlayer != null) ttsPlayer.Reset();
                 if (keyframeBridge != null) keyframeBridge.ResetExpressions();
@@ -311,6 +316,13 @@ namespace LLMUnitySamples
                         aiBubble.SetText(aiBubble.GetText());
                         layoutDirty = true;
                         AllowInput();
+
+                        // Notify session panel about new session
+                        if (_wasNewSession && !string.IsNullOrEmpty(dmpClient.SessionId))
+                        {
+                            OnNewSessionCreated?.Invoke(dmpClient.SessionId, _lastSentMessage);
+                            _wasNewSession = false;
+                        }
                     }
                 );
             }
@@ -475,6 +487,46 @@ namespace LLMUnitySamples
             {
                 if (scrollRect != null) scrollRect.verticalNormalizedPosition = 0f;
             }
+        }
+
+        // =================================================================
+        // Session Management (used by SessionPanelController)
+        // =================================================================
+
+        /// <summary>Fired when a new session is created (first stream_end with new session_id).</summary>
+        public event Action<string, string> OnNewSessionCreated; // sessionId, firstUserMessage
+
+        private string _lastSentMessage;
+        private bool _wasNewSession;
+
+        /// <summary>Clear all chat bubbles from the UI.</summary>
+        public void ClearAllBubbles()
+        {
+            foreach (var bubble in chatBubbles)
+                bubble.Destroy();
+            chatBubbles.Clear();
+            UpdateBubblePositions();
+        }
+
+        /// <summary>Load chat history into the bubble UI.</summary>
+        public void LoadHistoryBubbles(List<ChatMessageData> messages)
+        {
+            ClearAllBubbles();
+            foreach (var msg in messages)
+            {
+                bool isPlayer = msg.role == "user";
+                string content = msg.content ?? "";
+                // Skip empty or tool-related content
+                if (string.IsNullOrWhiteSpace(content)) continue;
+                AddBubble(content, isPlayer);
+            }
+            StartCoroutine(ScrollToBottomNextFrame());
+        }
+
+        /// <summary>Add a bubble from external code (e.g. session history loading).</summary>
+        public void AddExternalBubble(string message, bool isPlayer)
+        {
+            AddBubble(message, isPlayer);
         }
 
     }
