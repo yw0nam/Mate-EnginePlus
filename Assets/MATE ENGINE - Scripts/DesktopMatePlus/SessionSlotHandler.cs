@@ -65,6 +65,7 @@ namespace DesktopMatePlus
         /// </summary>
         public void OnSlotClicked()
         {
+            Debug.Log($"[SessionSlot] OnSlotClicked: sessionId={_sessionId} controller={(_controller != null ? "OK" : "NULL")} isEditing={_isEditing}");
             if (_isEditing) return;
             _controller?.SelectSession(_sessionId);
         }
@@ -75,6 +76,7 @@ namespace DesktopMatePlus
         /// </summary>
         public void OnDeleteClicked()
         {
+            Debug.Log($"[SessionSlot] OnDeleteClicked: sessionId={_sessionId}");
             _controller?.DeleteSession(_sessionId);
         }
 
@@ -120,7 +122,19 @@ namespace DesktopMatePlus
 
             titleText.gameObject.SetActive(false);
             titleInputField.gameObject.SetActive(true);
+            // Bring InputField to front so nothing overlaps it
+            titleInputField.transform.SetAsLastSibling();
             titleInputField.text = _originalTitle;
+
+            // Disable the root Button while editing so it doesn't intercept clicks/focus
+            if (_slotButton != null) _slotButton.interactable = false;
+
+            StartCoroutine(ActivateInputNextFrame());
+        }
+
+        private System.Collections.IEnumerator ActivateInputNextFrame()
+        {
+            yield return null;
             titleInputField.Select();
             titleInputField.ActivateInputField();
         }
@@ -128,6 +142,9 @@ namespace DesktopMatePlus
         private void ExitEditMode(string newTitle)
         {
             _isEditing = false;
+
+            // Re-enable slot button
+            if (_slotButton != null) _slotButton.interactable = true;
 
             if (titleInputField != null)
                 titleInputField.gameObject.SetActive(false);
@@ -141,10 +158,6 @@ namespace DesktopMatePlus
                 _controller?.UpdateSessionTitle(_sessionId, trimmed);
             }
         }
-
-        // =================================================================
-        // Helpers
-        // =================================================================
 
         private static string FormatTimestamp(string iso)
         {
