@@ -74,6 +74,16 @@ namespace DesktopMatePlus
         /// </summary>
         public bool IsPlaying => _playing || _queue.Count > 0;
 
+        public void Pause()
+        {
+            if (_playing && _audioSource != null) _audioSource.Pause();
+        }
+
+        public void Resume()
+        {
+            if (_playing && _audioSource != null) _audioSource.UnPause();
+        }
+
         // =================================================================
         // WAV Decoder
         // =================================================================

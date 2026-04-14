@@ -196,11 +196,6 @@ namespace LLMUnitySamples
 
         void OnDisable()
         {
-            if (streamAudioSource != null && streamAudioSource.isPlaying)
-            {
-                streamAudioSource.Stop();
-                streamAudioSource.volume = 1f; 
-            }
             if (avatarAnimator != null) avatarAnimator.SetBool(isTalkingHash, false);
         }
 

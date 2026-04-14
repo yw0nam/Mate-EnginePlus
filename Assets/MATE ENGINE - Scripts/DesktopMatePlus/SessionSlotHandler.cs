@@ -27,6 +27,7 @@ namespace DesktopMatePlus
 
         private SessionPanelController _controller;
         private string _sessionId;
+        private string _fullTitle;
         private string _originalTitle;
         private Button _slotButton;
         private bool _isEditing;
@@ -42,11 +43,11 @@ namespace DesktopMatePlus
             _sessionId = session.session_id;
             _controller = controller;
 
-            string title = !string.IsNullOrEmpty(session.title)
+            _fullTitle = !string.IsNullOrEmpty(session.title)
                 ? session.title
-                : $"Chat {_sessionId[..Math.Min(8, _sessionId.Length)]}...";
+                : $"{_sessionId[..Math.Min(8, _sessionId.Length)]}...";
 
-            if (titleText != null) titleText.text = title;
+            if (titleText != null) titleText.text = TruncateTitle(_fullTitle);
             if (createdText != null) createdText.text = FormatTimestamp(session.created_at);
             if (updatedText != null) updatedText.text = FormatTimestamp(session.updated_at);
 
@@ -118,7 +119,7 @@ namespace DesktopMatePlus
         private void EnterEditMode()
         {
             _isEditing = true;
-            _originalTitle = titleText != null ? titleText.text : "";
+            _originalTitle = _fullTitle;
 
             titleText.gameObject.SetActive(false);
             titleInputField.gameObject.SetActive(true);
@@ -154,10 +155,14 @@ namespace DesktopMatePlus
             string trimmed = newTitle?.Trim();
             if (!string.IsNullOrEmpty(trimmed) && trimmed != _originalTitle)
             {
-                titleText.text = trimmed;
+                _fullTitle = trimmed;
+                titleText.text = TruncateTitle(_fullTitle);
                 _controller?.UpdateSessionTitle(_sessionId, trimmed);
             }
         }
+
+        private static string TruncateTitle(string title) =>
+            title.Length > 7 ? title[..7] : title;
 
         private static string FormatTimestamp(string iso)
         {

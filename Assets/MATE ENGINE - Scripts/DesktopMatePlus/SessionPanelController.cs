@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using LLMUnitySamples;
 
 namespace DesktopMatePlus
 {
@@ -14,11 +13,13 @@ namespace DesktopMatePlus
         [Header("References")]
         public SessionApiClient apiClient;
         public DesktopMatePlusClient dmpClient;
-        public ChatBot chatBot;
-        public GameObject chatMenuPanel;
 
         [Header("Prefabs")]
         [SerializeField] private GameObject sessionItemPrefab;
+
+        // Events for DmpChatController integration
+        public event Action<List<ChatMessageData>> OnHistoryLoaded;
+        public event Action OnChatCleared;
 
         private RectTransform _content;
         private readonly List<SessionInfo> _sessions = new();
@@ -28,17 +29,11 @@ namespace DesktopMatePlus
         void OnEnable()
         {
             FindContent();
-
-            if (chatBot != null)
-                chatBot.OnNewSessionCreated += OnNewSessionCreated;
-
             RefreshSessionList();
         }
 
         void OnDisable()
         {
-            if (chatBot != null)
-                chatBot.OnNewSessionCreated -= OnNewSessionCreated;
         }
 
         private void FindContent()
@@ -63,12 +58,9 @@ namespace DesktopMatePlus
             if (dmpClient != null) dmpClient.SessionId = sessionId;
             HighlightActive();
 
-            if (chatMenuPanel != null) chatMenuPanel.SetActive(true);
-            gameObject.SetActive(false);
-
             apiClient?.GetChatHistory(sessionId, 50, messages =>
             {
-                chatBot?.LoadHistoryBubbles(messages);
+                OnHistoryLoaded?.Invoke(messages);
             }, err => Debug.LogWarning($"[SessionPanel] History load error: {err}"));
         }
 
@@ -97,12 +89,11 @@ namespace DesktopMatePlus
         {
             _activeSessionId = null;
             if (dmpClient != null) dmpClient.SessionId = null;
-
-            if (chatMenuPanel != null) chatMenuPanel.SetActive(true);
-            gameObject.SetActive(false);
-
-            chatBot?.ClearAllBubbles();
+            OnChatCleared?.Invoke();
         }
+
+        /// <summary>Public alias for DmpChatController to trigger refresh.</summary>
+        public void RefreshList() => RefreshSessionList();
 
         private void OnSessionsLoaded(List<SessionInfo> sessions)
         {
@@ -161,7 +152,8 @@ namespace DesktopMatePlus
             }
         }
 
-        private void OnNewSessionCreated(string sessionId, string firstMessage)
+        /// <summary>Called by DmpChatController when a new session is created.</summary>
+        public void AddNewSession(string sessionId, string firstMessage)
         {
             _sessions.Insert(0, new SessionInfo
             {
@@ -174,6 +166,7 @@ namespace DesktopMatePlus
             });
             _activeSessionId = sessionId;
             apiClient?.UpdateSessionTitle(sessionId, _sessions[0].title);
+            RebuildUI();
         }
     }
 }
