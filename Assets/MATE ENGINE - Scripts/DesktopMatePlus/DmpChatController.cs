@@ -39,6 +39,13 @@ namespace DesktopMatePlus
         [Header("Session")]
         public SessionPanelController sessionPanel;
 
+        [Header("Screenshot")]
+        public Button screenshotButton;
+        public ScreenCapturePanelController capturePanel;
+        public ScreenCaptureChip captureChip;
+
+        private ScreenCaptureSource _pendingCapture;
+
         private readonly List<GameObject> _messageObjects = new();
         private DmpChatMessageItem _activeAIBubble;
         private bool _isStreaming;
@@ -68,6 +75,12 @@ namespace DesktopMatePlus
                 sessionPanel.OnChatCleared += OnNewChatRequested;
             }
 
+            if (capturePanel != null)
+                capturePanel.OnSourceSelected += OnCaptureSourceSelected;
+
+            if (captureChip != null)
+                captureChip.OnChipCancelled += OnCaptureCancelled;
+
             ShowThinking(false);
             UpdateConnectionStatus(false);
             FindAvatar();
@@ -85,6 +98,11 @@ namespace DesktopMatePlus
                 sessionPanel.OnHistoryLoaded -= LoadHistory;
                 sessionPanel.OnChatCleared -= OnNewChatRequested;
             }
+            if (capturePanel != null)
+                capturePanel.OnSourceSelected -= OnCaptureSourceSelected;
+
+            if (captureChip != null)
+                captureChip.OnChipCancelled -= OnCaptureCancelled;
         }
 
         // ==== Connection ====
@@ -103,21 +121,37 @@ namespace DesktopMatePlus
             Debug.Log($"[DMP-Chat] Disconnected: {reason}");
         }
 
-        private void UpdateConnectionStatus(bool connected)
+        private void UpdateConnectionStatus(bool connected, string overrideMsg = null)
         {
-            if (connectionStatusText != null)
+            if (connectionStatusText == null) return;
+            if (overrideMsg != null)
+            {
+                connectionStatusText.text = overrideMsg;
+                // 3초 후 정상 상태로 복귀
+                CancelInvoke(nameof(RestoreConnectionStatus));
+                Invoke(nameof(RestoreConnectionStatus), 3f);
+            }
+            else
+            {
                 connectionStatusText.text = connected ? "Connected" : "Disconnected";
+            }
+        }
+
+        private void RestoreConnectionStatus()
+        {
+            UpdateConnectionStatus(_connected);
         }
 
         private void SetInputInteractable(bool interactable)
         {
             if (inputField != null) inputField.interactable = interactable;
             if (sendButton != null) sendButton.interactable = interactable;
+            if (screenshotButton != null) screenshotButton.interactable = interactable;
         }
 
         // ==== Send Message ====
 
-        public void OnSendClicked()
+        public async void OnSendClicked()
         {
             if (_isStreaming || !_connected) return;
 
@@ -128,6 +162,30 @@ namespace DesktopMatePlus
             {
                 inputField.text = "";
                 inputField.ActivateInputField();
+            }
+
+            // 캡처 대상이 있으면 Send 시점에 스크린샷 실행
+            string[] captureImages = null;
+            if (_pendingCapture != null)
+            {
+                var tex = await ScreenCaptureManager.CaptureAsync(_pendingCapture);
+                if (tex != null)
+                {
+                    string b64 = ScreenCaptureManager.ToBase64PNG(tex);
+                    if (b64 != null)
+                        captureImages = new[] { b64 };
+                    else
+                        UpdateConnectionStatus(_connected, "캡처 실패: 이미지 크기 초과");
+                    UnityEngine.Object.Destroy(tex);
+                }
+                else
+                {
+                    UpdateConnectionStatus(_connected, "캡처 실패");
+                }
+                // 캡처 후 칩/버튼 리셋 (성공 여부 무관)
+                _pendingCapture = null;
+                captureChip?.Hide();
+                SetScreenshotButtonArmed(false);
             }
 
             _lastSentMessage = message;
@@ -172,9 +230,9 @@ namespace DesktopMatePlus
                         sessionPanel?.AddNewSession(dmpClient.SessionId, _lastSentMessage);
                         _wasNewSession = false;
                     }
-
                     ScrollToBottom();
-                }
+                },
+                images: captureImages
             );
         }
 
@@ -298,6 +356,32 @@ namespace DesktopMatePlus
         {
             if (_avatarAnimator != null)
                 _avatarAnimator.SetBool(IsTalkingHash, talking);
+        }
+
+        // ==== Screenshot ====
+
+        private void OnCaptureSourceSelected(ScreenCaptureSource src)
+        {
+            _pendingCapture = src;
+            captureChip?.Show(src.DisplayName);
+            SetScreenshotButtonArmed(true);
+        }
+
+        private void OnCaptureCancelled()
+        {
+            _pendingCapture = null;
+            captureChip?.Hide();
+            SetScreenshotButtonArmed(false);
+        }
+
+        private void SetScreenshotButtonArmed(bool armed)
+        {
+            if (screenshotButton == null) return;
+            var colors = screenshotButton.colors;
+            colors.normalColor = armed
+                ? new Color(0.48f, 0.3f, 1f, 1f)   // 보라색 활성
+                : new Color(0.16f, 0.16f, 0.22f, 1f); // 기본 회색
+            screenshotButton.colors = colors;
         }
     }
 }
