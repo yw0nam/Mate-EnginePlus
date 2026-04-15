@@ -133,5 +133,137 @@ namespace DesktopMatePlus
 
             return true;
         }
+
+        // ── 캡처 ──────────────────────────────────────────────────────
+
+        /// <summary>
+        /// 백그라운드 STA 스레드에서 캡처 후 메인 스레드에서 Texture2D 반환.
+        /// 실패 시 null 반환.
+        /// </summary>
+        public static async Awaitable<Texture2D> CaptureAsync(ScreenCaptureSource src)
+        {
+            byte[] rawPng = null;
+
+            // GDI 캡처는 STA 스레드에서 실행
+            var tcs = new System.Threading.Tasks.TaskCompletionSource<byte[]>();
+            var thread = new System.Threading.Thread(() =>
+            {
+                try
+                {
+                    rawPng = src.Type == CaptureType.Monitor
+                        ? CaptureMonitor(src.MonitorRect)
+                        : CaptureWindow(src.WindowHandle);
+                    tcs.SetResult(rawPng);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[DMP-Capture] 캡처 실패: {e.Message}");
+                    tcs.SetResult(null);
+                }
+            });
+            thread.SetApartmentState(System.Threading.ApartmentState.STA);
+            thread.Start();
+
+            byte[] bytes = await tcs.Task;
+            if (bytes == null) return null;
+
+            // Texture2D 생성은 메인 스레드에서
+            await Awaitable.MainThreadAsync();
+            var tex = new Texture2D(2, 2);
+            tex.LoadImage(bytes);
+            return tex;
+        }
+
+        static byte[] CaptureMonitor(RECT rect)
+        {
+            // DPI 보정: GetDeviceCaps로 배율 확인
+            IntPtr hdcScreen = GetDC(IntPtr.Zero);
+            int dpiX = GetDeviceCaps(hdcScreen, LOGPIXELSX);
+            ReleaseDC(IntPtr.Zero, hdcScreen);
+            float scale = dpiX / 96f;
+
+            int x = (int)(rect.left / scale);
+            int y = (int)(rect.top  / scale);
+            int w = (int)((rect.right  - rect.left) / scale);
+            int h = (int)((rect.bottom - rect.top)  / scale);
+
+            using var bmp = new System.Drawing.Bitmap(w, h);
+            using var g   = System.Drawing.Graphics.FromImage(bmp);
+            g.CopyFromScreen(x, y, 0, 0, new System.Drawing.Size(w, h));
+
+            using var ms = new System.IO.MemoryStream();
+            bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+            return ms.ToArray();
+        }
+
+        static byte[] CaptureWindow(IntPtr hWnd)
+        {
+            var rect = new RECT();
+            if (!GetWindowRect(hWnd, ref rect)) return null;
+            int w = rect.right  - rect.left;
+            int h = rect.bottom - rect.top;
+            if (w <= 0 || h <= 0) return null;
+
+            IntPtr hdcScreen = GetDC(IntPtr.Zero);
+            IntPtr hdcMem    = CreateCompatibleDC(hdcScreen);
+            IntPtr hBitmap   = CreateCompatibleBitmap(hdcScreen, w, h);
+            IntPtr hOld      = SelectObject(hdcMem, hBitmap);
+
+            bool ok = PrintWindow(hWnd, hdcMem, PW_RENDERFULLCONTENT);
+
+            byte[] result = null;
+            if (ok)
+            {
+                using var bmp = System.Drawing.Image.FromHbitmap(hBitmap);
+                using var ms  = new System.IO.MemoryStream();
+                bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                result = ms.ToArray();
+            }
+
+            SelectObject(hdcMem, hOld);
+            DeleteObject(hBitmap);
+            DeleteDC(hdcMem);
+            ReleaseDC(IntPtr.Zero, hdcScreen);
+
+            return result;
+        }
+
+        // ── Base64 인코딩 ──────────────────────────────────────────────
+
+        /// <summary>
+        /// Texture2D → base64 PNG 문자열.
+        /// maxBase64Bytes 초과 시 절반씩 최대 3회 리사이즈.
+        /// 3회 후에도 초과 시 null 반환.
+        /// </summary>
+        public static string ToBase64PNG(Texture2D tex, int maxBase64Bytes = 5_000_000)
+        {
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                byte[] png    = tex.EncodeToPNG();
+                string b64    = Convert.ToBase64String(png);
+                if (b64.Length <= maxBase64Bytes) return b64;
+
+                if (attempt == 3) break;
+
+                // 절반으로 리사이즈
+                int newW = Mathf.Max(1, tex.width  / 2);
+                int newH = Mathf.Max(1, tex.height / 2);
+                var rt   = new RenderTexture(newW, newH, 0);
+                Graphics.Blit(tex, rt);
+                var prev = RenderTexture.active;
+                RenderTexture.active = rt;
+                var resized = new Texture2D(newW, newH);
+                resized.ReadPixels(new Rect(0, 0, newW, newH), 0, 0);
+                resized.Apply();
+                RenderTexture.active = prev;
+                rt.Release();
+
+                if (attempt > 0) UnityEngine.Object.Destroy(tex);
+                tex = resized;
+            }
+
+            Debug.LogError("[DMP-Capture] 5MB 한도 초과, 캡처 취소");
+            return null;
+        }
     }
 }
