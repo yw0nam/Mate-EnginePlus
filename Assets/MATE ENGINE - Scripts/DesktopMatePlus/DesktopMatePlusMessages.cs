@@ -35,6 +35,20 @@ namespace DesktopMatePlus
     }
 
     [Serializable]
+    public class ImageUrl
+    {
+        public string url;
+        public string detail = "auto";
+    }
+
+    [Serializable]
+    public class ImageContent
+    {
+        public string type = "image_url";
+        public ImageUrl image_url;
+    }
+
+    [Serializable]
     public class OutgoingChatMessage
     {
         public string type = "chat_message";
@@ -46,6 +60,7 @@ namespace DesktopMatePlus
         public bool tts_enabled = true;
         public string reference_id;
         public int limit = 10;
+        public ImageContent[] images;  // null이면 직렬화 시 생략됨
     }
 
     [Serializable]
