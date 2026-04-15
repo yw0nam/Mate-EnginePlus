@@ -107,7 +107,7 @@ namespace DesktopMatePlus
         /// Send a chat message with streaming callbacks.
         /// This is the primary API for ChatBot.cs integration.
         /// </summary>
-        public void SendChat(string message, Action<string> onPartialToken, Action<TtsChunkData> onTtsChunk, Action onComplete)
+        public void SendChat(string message, Action<string> onPartialToken, Action<TtsChunkData> onTtsChunk, Action onComplete, string[] images = null)
         {
             if (!IsAuthenticated)
             {
@@ -132,6 +132,15 @@ namespace DesktopMatePlus
                 reference_id = referenceId,
                 limit = stmLimit
             };
+            if (images != null && images.Length > 0)
+            {
+                msg.images = new ImageContent[images.Length];
+                for (int i = 0; i < images.Length; i++)
+                    msg.images[i] = new ImageContent
+                    {
+                        image_url = new ImageUrl { url = $"data:image/png;base64,{images[i]}" }
+                    };
+            }
             _ = SendAsync(MessageParser.Serialize(msg));
         }
 
