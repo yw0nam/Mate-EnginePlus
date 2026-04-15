@@ -153,6 +153,26 @@ namespace DesktopMatePlus
 
         public async void OnSendClicked()
         {
+            try
+            {
+                await OnSendClickedCore();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[DMP-Chat] Send error: {e}");
+                _isStreaming = false;
+                _activeAIBubble = null;
+                ShowThinking(false);
+                SetInputInteractable(true);
+                SetTalking(false);
+                _pendingCapture = null;
+                captureChip?.Hide();
+                SetScreenshotButtonArmed(false);
+            }
+        }
+
+        private async Awaitable OnSendClickedCore()
+        {
             if (_isStreaming || !_connected) return;
 
             string message = inputField != null ? inputField.text.Trim() : "";

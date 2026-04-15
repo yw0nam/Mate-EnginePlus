@@ -60,7 +60,8 @@ namespace DesktopMatePlus
         public bool tts_enabled = true;
         public string reference_id;
         public int limit = 10;
-        public ImageContent[] images;  // null이면 직렬화 시 생략됨
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public ImageContent[] images;
     }
 
     [Serializable]
