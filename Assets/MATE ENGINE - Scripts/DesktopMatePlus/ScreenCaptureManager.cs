@@ -69,7 +69,8 @@ namespace DesktopMatePlus
         {
             var result = new List<ScreenCaptureSource>();
             int index = 0;
-            EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (hMon, hdcMon, ref rect, _) =>
+
+            bool Callback(IntPtr hMon, IntPtr hdcMon, ref RECT rect, IntPtr dwData)
             {
                 var info = new MONITORINFO { cbSize = (uint)Marshal.SizeOf<MONITORINFO>() };
                 if (GetMonitorInfo(hMon, ref info))
@@ -87,7 +88,9 @@ namespace DesktopMatePlus
                     index++;
                 }
                 return true;
-            }, IntPtr.Zero);
+            }
+
+            EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, Callback, IntPtr.Zero);
             return result;
         }
 
@@ -96,7 +99,7 @@ namespace DesktopMatePlus
         public static List<ScreenCaptureSource> EnumerateWindows()
         {
             var result = new List<ScreenCaptureSource>();
-            EnumWindows((hWnd, _) =>
+            EnumWindows((hWnd, lParam) =>
             {
                 if (!IsAltTabWindow(hWnd)) return true;
                 var sb = new StringBuilder(256);
