@@ -15,6 +15,8 @@ namespace DesktopMatePlus
         private int _nextSequence;
         private bool _playing;
 
+        public event System.Action<TtsChunkData> OnChunkStarted;
+
         void Awake()
         {
             _audioSource = GetComponent<AudioSource>();
@@ -67,6 +69,7 @@ namespace DesktopMatePlus
             _audioSource.clip = clip;
             _audioSource.Play();
             _playing = true;
+            OnChunkStarted?.Invoke(chunk);
         }
 
         /// <summary>
