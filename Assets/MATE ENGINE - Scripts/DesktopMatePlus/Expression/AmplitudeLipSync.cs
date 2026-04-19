@@ -5,7 +5,13 @@ namespace DesktopMatePlus
     /// <summary>
     /// Reads AudioSource output amplitude every frame and drives UniversalBlendshapes.A
     /// with asymmetric, framerate-independent smoothing.
+    ///
+    /// Runs in LateUpdate so the write happens AFTER the avatar's Animator samples
+    /// FACE_RESET / FACE_IDLE clips (which also bind UniversalBlendshapes.A). A
+    /// DefaultExecutionOrder of -100 ensures we execute BEFORE UniversalBlendshapes'
+    /// own LateUpdate, so our fresh value reaches the VRM BlendShapeProxy this frame.
     /// </summary>
+    [DefaultExecutionOrder(-100)]
     public class AmplitudeLipSync : MonoBehaviour
     {
         [Header("References")]
@@ -34,12 +40,12 @@ namespace DesktopMatePlus
             if (source == null) source = GetComponent<AudioSource>();
         }
 
-        void Update()
+        void LateUpdate()
         {
             TryFindBlendshapes();
 
             float target;
-            if (source == null || !source.isPlaying)
+            if (source == null || !source.isPlaying || source.clip == null)
             {
                 target = 0f;
             }
@@ -49,7 +55,19 @@ namespace DesktopMatePlus
                 if (_buffer.Length != sampleWindow)
                     _buffer = new float[sampleWindow];
 
-                source.GetOutputData(_buffer, 0);
+                // Read samples directly from the clip at the current playback position.
+                //
+                // We originally used AudioSource.GetOutputData here, but that path runs
+                // through Unity's DSP mixer and returns all-zero buffers whenever the
+                // editor game window is unfocused or an output AudioMixer mutes the
+                // group - lip sync would die silently during any realistic test. Pulling
+                // from clip.GetData at timeSamples gives us the authored amplitude the
+                // TTS engine produced, independent of routing/focus, which matches what
+                // the user actually hears in the final build.
+                int clipSamples = source.clip.samples;
+                int channels = Mathf.Max(1, source.clip.channels);
+                int startPerChannel = Mathf.Clamp(source.timeSamples, 0, Mathf.Max(0, clipSamples - (_buffer.Length / channels)));
+                source.clip.GetData(_buffer, startPerChannel);
 
                 float sumSq = 0f;
                 for (int i = 0; i < _buffer.Length; i++)

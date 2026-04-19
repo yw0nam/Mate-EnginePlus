@@ -8,7 +8,13 @@ namespace DesktopMatePlus
     /// Subscribes to TtsAudioPlayer.OnChunkStarted and crossfades UniversalBlendshapes
     /// emotion fields (Joy / Angry / Sorrow / Fun / Neutral) toward the chunk's emotion.
     /// UniversalBlendshapes is pass-through, so this component is the canonical smoother.
+    ///
+    /// Runs in LateUpdate so the write happens AFTER the avatar's Animator samples
+    /// FACE_RESET / FACE_SMILE / FACE_IDLE clips (which also bind the same fields). A
+    /// DefaultExecutionOrder of -100 ensures we execute BEFORE UniversalBlendshapes'
+    /// own LateUpdate, so our fresh value reaches the VRM BlendShapeProxy this frame.
     /// </summary>
+    [DefaultExecutionOrder(-100)]
     public class EmotionCrossfader : MonoBehaviour
     {
         [Header("References")]
@@ -62,7 +68,7 @@ namespace DesktopMatePlus
             }
         }
 
-        void Update()
+        void LateUpdate()
         {
             if (!_subscribed) TrySubscribe();
 
