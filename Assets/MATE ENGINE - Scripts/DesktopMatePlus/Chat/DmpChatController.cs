@@ -216,6 +216,9 @@ namespace DesktopMatePlus
             var aiBubble = AddMessage("...", true, DateTime.Now);
             _activeAIBubble = aiBubble;
 
+            if (aiBubble != null)
+                aiBubble.OnTextRevealed += ScrollToBottom;
+
             _isStreaming = true;
             ShowThinking(true);
             SetInputInteractable(false);
