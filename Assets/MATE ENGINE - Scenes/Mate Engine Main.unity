@@ -6634,6 +6634,8 @@ GameObject:
   - component: {fileID: 222114629}
   - component: {fileID: 222114631}
   - component: {fileID: 222114630}
+  - component: {fileID: 222114632}
+  - component: {fileID: 222114633}
   m_Layer: 0
   m_Name: TtsAudioPlayer
   m_TagString: Untagged
@@ -6765,6 +6767,42 @@ AudioSource:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+--- !u!114 &222114632
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 222114628}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e342af8dd8694dd44b1278a02193b447, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DesktopMatePlus.EmotionCrossfader
+  blendshapes: {fileID: 0}
+  player: {fileID: 222114630}
+  crossfadeDuration: 0.25
+  decayToNeutral: 0.5
+--- !u!114 &222114633
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 222114628}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 474b84880a37794499ef02a1fc59faf2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DesktopMatePlus.AmplitudeLipSync
+  source: {fileID: 0}
+  blendshapes: {fileID: 0}
+  sampleWindow: 1024
+  noiseFloor: 0.02
+  gain: 3
+  maxOpen: 1
+  attackSpeed: 20
+  releaseSpeed: 8
 --- !u!1 &222190338
 GameObject:
   m_ObjectHideFlags: 0
@@ -22330,6 +22368,8 @@ GameObject:
   - component: {fileID: 595568077}
   - component: {fileID: 595568079}
   - component: {fileID: 595568078}
+  - component: {fileID: 595568081}
+  - component: {fileID: 595568080}
   m_Layer: 0
   m_Name: TtsAudioPlayer
   m_TagString: Untagged
@@ -22461,6 +22501,42 @@ AudioSource:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+--- !u!114 &595568080
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 595568076}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 474b84880a37794499ef02a1fc59faf2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DesktopMatePlus.AmplitudeLipSync
+  source: {fileID: 0}
+  blendshapes: {fileID: 0}
+  sampleWindow: 1024
+  noiseFloor: 0.02
+  gain: 3
+  maxOpen: 1
+  attackSpeed: 20
+  releaseSpeed: 8
+--- !u!114 &595568081
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 595568076}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e342af8dd8694dd44b1278a02193b447, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DesktopMatePlus.EmotionCrossfader
+  blendshapes: {fileID: 0}
+  player: {fileID: 595568078}
+  crossfadeDuration: 0.25
+  decayToNeutral: 0.5
 --- !u!1 &596866287
 GameObject:
   m_ObjectHideFlags: 0
@@ -28263,7 +28339,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DesktopMatePlus.DmpChatController
   dmpClient: {fileID: 1549975289}
   ttsPlayer: {fileID: 222114630}
-  keyframeBridge: {fileID: 1212408710}
+  emotionCrossfader: {fileID: 222114632}
   chatScrollRect: {fileID: 1753383772}
   messageListContent: {fileID: 1581426364}
   messageItemTemplate: {fileID: 4201327619790861527, guid: ee04582d51a35f3468398a7f03894027, type: 3}
@@ -41137,7 +41213,7 @@ Light:
   serializedVersion: 11
   m_Type: 2
   m_Color: {r: 1, g: 0.26999998, b: 0.96203995, a: 1}
-  m_Intensity: 3.4698212e-30
+  m_Intensity: 2.479261e-30
   m_Range: 0.5
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -84502,7 +84578,7 @@ Light:
   serializedVersion: 11
   m_Type: 2
   m_Color: {r: 0, g: 0.44799995, b: 1, a: 1}
-  m_Intensity: 6.9396424e-30
+  m_Intensity: 4.958522e-30
   m_Range: 1
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -101646,7 +101722,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1168843625}
-  - {fileID: 1513468998}
   m_Father: {fileID: 8116750886231050087}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
@@ -103577,7 +103652,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 0}
   m_AnchorMax: {x: 1, y: 0}
-  m_AnchoredPosition: {x: -410, y: 430}
+  m_AnchoredPosition: {x: -490, y: 300}
   m_SizeDelta: {x: 400, y: 360}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1187921783
@@ -104243,51 +104318,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1205854645}
   m_CullTransparentMesh: 1
---- !u!1 &1212408708
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1212408709}
-  - component: {fileID: 1212408710}
-  m_Layer: 0
-  m_Name: KeyframeAnimationBridge
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &1212408709
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1212408708}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 1615065547523557223}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1212408710
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1212408708}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 867bf79a11b608c4397775cb077f951b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::DesktopMatePlus.KeyframeAnimationBridge
-  blendshapes: {fileID: 0}
 --- !u!1 &1216195868
 GameObject:
   m_ObjectHideFlags: 0
@@ -114187,7 +114217,7 @@ Light:
   serializedVersion: 11
   m_Type: 2
   m_Color: {r: 0, g: 0.44799995, b: 1, a: 1}
-  m_Intensity: 5.2047316e-30
+  m_Intensity: 3.7188917e-30
   m_Range: 1
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -119016,51 +119046,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1509582141}
   m_CullTransparentMesh: 1
---- !u!1 &1513468997
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1513468998}
-  - component: {fileID: 1513468999}
-  m_Layer: 0
-  m_Name: KeyframeAnimationBridge
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &1513468998
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1513468997}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 1121784704}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1513468999
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1513468997}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 867bf79a11b608c4397775cb077f951b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::DesktopMatePlus.KeyframeAnimationBridge
-  blendshapes: {fileID: 0}
 --- !u!1 &1517289934
 GameObject:
   m_ObjectHideFlags: 0
@@ -176660,7 +176645,7 @@ MonoBehaviour:
   llmCharacter: {fileID: 7063969291654908835}
   dmpClient: {fileID: 1549975289}
   ttsPlayer: {fileID: 595568078}
-  keyframeBridge: {fileID: 1212408710}
+  emotionCrossfader: {fileID: 595568081}
   inputPlaceholder: Talk to me!
   streamAudioSource: {fileID: 1197370323}
   playerMaterial: {fileID: 2100000, guid: cee35382f7f30a849836e533c6880e91, type: 2}
@@ -191083,7 +191068,6 @@ Transform:
   - {fileID: 222114629}
   - {fileID: 621747641}
   - {fileID: 1549975288}
-  - {fileID: 1212408709}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1616482063783338407
@@ -272998,7 +272982,7 @@ MonoBehaviour:
     groupID: ambi_lights
     exclusiveTags:
     - lights
-    fadeCurrentValue: 1.7349106e-30
+    fadeCurrentValue: 1.2396305e-30
     fadeTarget: 0
     isFading: 1
     hasYSet: 0
@@ -273022,7 +273006,7 @@ MonoBehaviour:
     groupID: ambi_lights
     exclusiveTags:
     - lights
-    fadeCurrentValue: 1.7349106e-30
+    fadeCurrentValue: 1.2396305e-30
     fadeTarget: 0
     isFading: 1
     hasYSet: 0
@@ -273046,7 +273030,7 @@ MonoBehaviour:
     groupID: ambi_lights
     exclusiveTags:
     - lights
-    fadeCurrentValue: 1.7349106e-30
+    fadeCurrentValue: 1.2396305e-30
     fadeTarget: 0
     isFading: 1
     hasYSet: 0

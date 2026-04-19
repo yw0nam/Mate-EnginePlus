@@ -39,7 +39,7 @@ namespace LLMUnitySamples
         [Header("DesktopMatePlus")]
         public DesktopMatePlusClient dmpClient;
         public TtsAudioPlayer ttsPlayer;
-        public KeyframeAnimationBridge keyframeBridge;
+        public EmotionCrossfader emotionCrossfader;
 
         [Header("Input Settings")]
         public string inputPlaceholder = "Message me";
@@ -293,9 +293,9 @@ namespace LLMUnitySamples
                 _lastSentMessage = message;
                 _wasNewSession = string.IsNullOrEmpty(dmpClient.SessionId);
 
-                // Reset TTS player and keyframe bridge for new turn
+                // Reset TTS player and emotion crossfader for new turn
                 if (ttsPlayer != null) ttsPlayer.Reset();
-                if (keyframeBridge != null) keyframeBridge.ResetExpressions();
+                if (emotionCrossfader != null) emotionCrossfader.ResetExpressions();
 
                 dmpClient.SendChat(
                     message,
@@ -303,7 +303,6 @@ namespace LLMUnitySamples
                     (ttsChunk) =>
                     {
                         if (ttsPlayer != null) ttsPlayer.EnqueueChunk(ttsChunk);
-                        if (keyframeBridge != null) keyframeBridge.EnqueueKeyframes(ttsChunk);
                     },
                     () =>
                     {

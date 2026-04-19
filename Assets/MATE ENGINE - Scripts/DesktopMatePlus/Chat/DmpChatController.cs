@@ -13,7 +13,7 @@ namespace DesktopMatePlus
         [Header("DMP")]
         public DesktopMatePlusClient dmpClient;
         public TtsAudioPlayer ttsPlayer;
-        public KeyframeAnimationBridge keyframeBridge;
+        public EmotionCrossfader emotionCrossfader;
 
         [Header("Chat UI")]
         public ScrollRect chatScrollRect;
@@ -222,7 +222,7 @@ namespace DesktopMatePlus
             SetTalking(true);
 
             if (ttsPlayer != null) ttsPlayer.Reset();
-            if (keyframeBridge != null) keyframeBridge.ResetExpressions();
+            if (emotionCrossfader != null) emotionCrossfader.ResetExpressions();
 
             dmpClient.SendChat(
                 message,
@@ -235,7 +235,6 @@ namespace DesktopMatePlus
                 onTtsChunk: (chunk) =>
                 {
                     if (ttsPlayer != null) ttsPlayer.EnqueueChunk(chunk);
-                    if (keyframeBridge != null) keyframeBridge.EnqueueKeyframes(chunk);
                 },
                 onComplete: () =>
                 {
