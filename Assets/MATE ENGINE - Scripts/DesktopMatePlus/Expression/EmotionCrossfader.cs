@@ -30,8 +30,13 @@ namespace DesktopMatePlus
 
         private static readonly string[] Fields = { "Joy", "Angry", "Sorrow", "Fun", "Neutral" };
 
+        // Emotion-name map. Backend may send either canonical text labels
+        // (happy/sad/angry/...) or the emotion emoji the LLM actually wrote in
+        // the reply (we've observed 😊, 😢, 😠 arriving verbatim in emotion).
+        // Both forms map to one of the 5 UniversalBlendshapes emotion fields.
         private static readonly Dictionary<string, string> EmotionMap = new()
         {
+            // Text labels
             { "happy",     "Joy" },
             { "joy",       "Joy" },
             { "sad",       "Sorrow" },
@@ -41,6 +46,28 @@ namespace DesktopMatePlus
             { "fun",       "Fun" },
             { "relaxed",   "Fun" },
             { "neutral",   "Neutral" },
+
+            // Joy / happy emoji
+            { "😊", "Joy" },  { "😀", "Joy" },  { "😃", "Joy" },  { "😄", "Joy" },
+            { "😁", "Joy" },  { "😆", "Joy" },  { "🙂", "Joy" },  { "😍", "Joy" },
+            { "😘", "Joy" },  { "🥰", "Joy" },  { "😋", "Joy" },  { "🤗", "Joy" },
+            { "😺", "Joy" },
+
+            // Sorrow / sad emoji
+            { "😢", "Sorrow" }, { "😭", "Sorrow" }, { "😞", "Sorrow" }, { "😔", "Sorrow" },
+            { "😿", "Sorrow" }, { "🥺", "Sorrow" }, { "😥", "Sorrow" }, { "😓", "Sorrow" },
+
+            // Angry emoji
+            { "😠", "Angry" }, { "😡", "Angry" }, { "🤬", "Angry" }, { "👿", "Angry" },
+            { "😾", "Angry" }, { "💢", "Angry" },
+
+            // Surprised/fun/relaxed all fold into Fun (matches text-label map)
+            { "😲", "Fun" },  { "😮", "Fun" },  { "😯", "Fun" },  { "😳", "Fun" },
+            { "🤔", "Fun" },  { "😌", "Fun" },  { "😇", "Fun" },  { "😎", "Fun" },
+            { "🤩", "Fun" },  { "😜", "Fun" },  { "😝", "Fun" },  { "🥳", "Fun" },
+
+            // Explicit neutral / deadpan
+            { "😐", "Neutral" }, { "😑", "Neutral" }, { "🤐", "Neutral" },
         };
 
         private readonly Dictionary<string, float> _current = new();
@@ -122,9 +149,12 @@ namespace DesktopMatePlus
         private string MapEmotion(string emotion)
         {
             if (string.IsNullOrEmpty(emotion)) return "Neutral";
-            string lower = emotion.ToLowerInvariant();
-            if (EmotionMap.TryGetValue(lower, out var mapped)) return mapped;
-            if (_unknownWarned.Add(lower))
+            // Trim defends against accidental whitespace from the backend (e.g. "happy ").
+            // ToLowerInvariant normalizes text labels; emoji pass through unchanged.
+            string key = emotion.Trim().ToLowerInvariant();
+            if (key.Length == 0) return "Neutral";
+            if (EmotionMap.TryGetValue(key, out var mapped)) return mapped;
+            if (_unknownWarned.Add(key))
                 Debug.LogWarning($"[EmotionCrossfader] unknown emotion '{emotion}' — using Neutral");
             return "Neutral";
         }
