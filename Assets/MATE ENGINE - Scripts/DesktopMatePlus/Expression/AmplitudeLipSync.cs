@@ -70,7 +70,14 @@ namespace DesktopMatePlus
 
         private void TryFindBlendshapes()
         {
-            if (blendshapes != null) return;
+            // Re-resolve if the current reference is destroyed OR its GameObject has
+            // been deactivated. VRMLoader hot-swaps avatars at runtime: it clones a
+            // new model and disables the default template. If our very first Update
+            // ran BEFORE the swap, we cached the template UB; once the template was
+            // deactivated, its LateUpdate stopped pumping values into the VRM proxy
+            // and lip sync went silent. Checking activeInHierarchy recovers from that.
+            if (blendshapes != null && blendshapes.gameObject.activeInHierarchy) return;
+            blendshapes = null;
 
             var loader = FindFirstObjectByType<VRMLoader>();
             if (loader != null)
@@ -80,6 +87,9 @@ namespace DesktopMatePlus
                     blendshapes = model.GetComponentInChildren<UniversalBlendshapes>(true);
             }
 
+            // Fallback: first ACTIVE UB in the scene. Do NOT include inactive - we
+            // would otherwise latch onto a deactivated template avatar whose
+            // LateUpdate never runs and so never drives the VRM expression proxy.
             if (blendshapes == null)
                 blendshapes = FindFirstObjectByType<UniversalBlendshapes>();
         }

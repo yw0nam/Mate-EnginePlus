@@ -138,7 +138,12 @@ namespace DesktopMatePlus
 
         private void TryFindBlendshapes()
         {
-            if (blendshapes != null) return;
+            // Re-resolve if the current reference is destroyed OR its GameObject has
+            // been deactivated. See AmplitudeLipSync.TryFindBlendshapes for the
+            // VRMLoader hot-swap rationale: without this, we latch onto a template
+            // UB that gets deactivated mid-scene and silently stops driving the VRM.
+            if (blendshapes != null && blendshapes.gameObject.activeInHierarchy) return;
+            blendshapes = null;
 
             var loader = FindFirstObjectByType<VRMLoader>();
             if (loader != null)
@@ -148,6 +153,7 @@ namespace DesktopMatePlus
                     blendshapes = model.GetComponentInChildren<UniversalBlendshapes>(true);
             }
 
+            // Fallback: first ACTIVE UB in the scene. Do NOT include inactive.
             if (blendshapes == null)
                 blendshapes = FindFirstObjectByType<UniversalBlendshapes>();
         }
