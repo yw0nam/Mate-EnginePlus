@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -5,14 +6,15 @@ using LLMUnity;
 using UnityEngine.UI;
 using System.Collections;
 using System.Linq;
+using DesktopMatePlus;
 
 namespace LLMUnitySamples
 {
     public class ChatBot : MonoBehaviour
     {
         [Header("Containers")]
-        public Transform chatContainer;         
-        public Transform inputContainer;        
+        public Transform chatContainer;
+        public Transform inputContainer;
 
         [Header("Colors & Font")]
         public Color playerColor = new Color32(81, 164, 81, 255);
@@ -25,14 +27,19 @@ namespace LLMUnitySamples
         public int bubbleWidth = 600;
         public float textPadding = 10f;
         public float bubbleSpacing = 10f;
-        public float bottomPadding = 10f;       
+        public float bottomPadding = 10f;
         public Sprite sprite;
         public Sprite roundedSprite16;
         public Sprite roundedSprite32;
         public Sprite roundedSprite64;
 
-        [Header("LLM")]
+        [Header("LLM (Legacy - unused when DMP client is assigned)")]
         public LLMCharacter llmCharacter;
+
+        [Header("DesktopMatePlus")]
+        public DesktopMatePlusClient dmpClient;
+        public TtsAudioPlayer ttsPlayer;
+        public EmotionCrossfader emotionCrossfader;
 
         [Header("Input Settings")]
         public string inputPlaceholder = "Message me";
@@ -76,6 +83,8 @@ namespace LLMUnitySamples
         private Animator lastAvatarAnimator;
         private static readonly int isTalkingHash = Animator.StringToHash("isTalking");
 
+
+        private bool UseDmp => dmpClient != null;
 
         void Start()
         {
@@ -123,8 +132,25 @@ namespace LLMUnitySamples
             inputBubble.AddValueChangedListener(onValueChanged);
             inputBubble.setInteractable(false);
 
-            ShowLoadedMessages();
-            _ = llmCharacter.Warmup(WarmUpCallback);
+            if (UseDmp)
+            {
+                dmpClient.Connect();
+                dmpClient.OnConnected += () =>
+                {
+                    warmUpDone = true;
+                    inputBubble.SetPlaceHolderText(inputPlaceholder);
+                    AllowInput();
+                };
+                dmpClient.OnDisconnected += (reason) =>
+                {
+                    Debug.Log($"[ChatBot] DMP disconnected: {reason}");
+                };
+            }
+            else
+            {
+                ShowLoadedMessages();
+                _ = llmCharacter.Warmup(WarmUpCallback);
+            }
             FindAvatarSmart();
         }
 
@@ -170,11 +196,6 @@ namespace LLMUnitySamples
 
         void OnDisable()
         {
-            if (streamAudioSource != null && streamAudioSource.isPlaying)
-            {
-                streamAudioSource.Stop();
-                streamAudioSource.volume = 1f; 
-            }
             if (avatarAnimator != null) avatarAnimator.SetBool(isTalkingHash, false);
         }
 
@@ -236,6 +257,7 @@ namespace LLMUnitySamples
 
         void ShowLoadedMessages()
         {
+            if (llmCharacter == null) return;
             int start = 1;
             int total = llmCharacter.chat.Count;
             if (maxMessages > 0)
@@ -263,26 +285,60 @@ namespace LLMUnitySamples
             AddBubble(message, true);
             Bubble aiBubble = AddBubble("...", false);
 
-            if (streamAudioSource != null)
-                streamAudioSource.Play();
             if (avatarAnimator != null) avatarAnimator.SetBool(isTalkingHash, true);
 
-            Task chatTask = llmCharacter.Chat(
-                message,
-                (partial) => { aiBubble.SetText(partial); layoutDirty = true; },
-                () =>
-                {
-                    if (avatarAnimator != null) avatarAnimator.SetBool(isTalkingHash, false);
+            if (UseDmp)
+            {
+                // Track new session for auto-title generation
+                _lastSentMessage = message;
+                _wasNewSession = string.IsNullOrEmpty(dmpClient.SessionId);
 
-                    aiBubble.SetText(aiBubble.GetText());
-                    layoutDirty = true;
+                // Reset TTS player and emotion crossfader for new turn
+                if (ttsPlayer != null) ttsPlayer.Reset();
+                if (emotionCrossfader != null) emotionCrossfader.ResetExpressions();
 
-                    if (streamAudioSource != null && streamAudioSource.isPlaying)
-                        StartCoroutine(FadeOutStreamAudio());
+                dmpClient.SendChat(
+                    message,
+                    (partial) => { aiBubble.SetText(partial); layoutDirty = true; },
+                    (ttsChunk) =>
+                    {
+                        if (ttsPlayer != null) ttsPlayer.EnqueueChunk(ttsChunk);
+                    },
+                    () =>
+                    {
+                        if (avatarAnimator != null) avatarAnimator.SetBool(isTalkingHash, false);
+                        aiBubble.SetText(aiBubble.GetText());
+                        layoutDirty = true;
+                        AllowInput();
 
-                    AllowInput();
-                }
-            );
+                        // Notify session panel about new session
+                        if (_wasNewSession && !string.IsNullOrEmpty(dmpClient.SessionId))
+                        {
+                            OnNewSessionCreated?.Invoke(dmpClient.SessionId, _lastSentMessage);
+                            _wasNewSession = false;
+                        }
+                    }
+                );
+            }
+            else
+            {
+                if (streamAudioSource != null)
+                    streamAudioSource.Play();
+
+                Task chatTask = llmCharacter.Chat(
+                    message,
+                    (partial) => { aiBubble.SetText(partial); layoutDirty = true; },
+                    () =>
+                    {
+                        if (avatarAnimator != null) avatarAnimator.SetBool(isTalkingHash, false);
+                        aiBubble.SetText(aiBubble.GetText());
+                        layoutDirty = true;
+                        if (streamAudioSource != null && streamAudioSource.isPlaying)
+                            StartCoroutine(FadeOutStreamAudio());
+                        AllowInput();
+                    }
+                );
+            }
             inputBubble.SetText("");
         }
 
@@ -315,7 +371,10 @@ namespace LLMUnitySamples
 
         public void CancelRequests()
         {
-            llmCharacter.CancelRequests();
+            if (UseDmp)
+                dmpClient.InterruptStream();
+            else
+                llmCharacter.CancelRequests();
             AllowInput();
         }
 
@@ -362,6 +421,8 @@ namespace LLMUnitySamples
 
         void Update()
         {
+            if (inputBubble == null) return;
+
             RefreshAvatarIfChanged();
 
             if (!inputBubble.inputFocused() && warmUpDone)
@@ -403,7 +464,7 @@ namespace LLMUnitySamples
             else if (cornerRadius <= 32) sprite = roundedSprite32;
             else sprite = roundedSprite64;
 
-            if (onValidateWarning && llmCharacter != null && !llmCharacter.remote && llmCharacter.llm != null && llmCharacter.llm.model == "")
+            if (onValidateWarning && llmCharacter != null && !llmCharacter.remote && llmCharacter.llm != null && llmCharacter.llm.model == "" && dmpClient == null)
             {
                 Debug.LogWarning($"Please select a model in the {llmCharacter.llm.gameObject.name} GameObject!");
                 onValidateWarning = false;
@@ -420,6 +481,46 @@ namespace LLMUnitySamples
             {
                 if (scrollRect != null) scrollRect.verticalNormalizedPosition = 0f;
             }
+        }
+
+        // =================================================================
+        // Session Management (used by SessionPanelController)
+        // =================================================================
+
+        /// <summary>Fired when a new session is created (first stream_end with new session_id).</summary>
+        public event Action<string, string> OnNewSessionCreated; // sessionId, firstUserMessage
+
+        private string _lastSentMessage;
+        private bool _wasNewSession;
+
+        /// <summary>Clear all chat bubbles from the UI.</summary>
+        public void ClearAllBubbles()
+        {
+            foreach (var bubble in chatBubbles)
+                bubble.Destroy();
+            chatBubbles.Clear();
+            UpdateBubblePositions();
+        }
+
+        /// <summary>Load chat history into the bubble UI.</summary>
+        public void LoadHistoryBubbles(List<ChatMessageData> messages)
+        {
+            ClearAllBubbles();
+            foreach (var msg in messages)
+            {
+                bool isPlayer = msg.role == "user";
+                string content = msg.content ?? "";
+                // Skip empty or tool-related content
+                if (string.IsNullOrWhiteSpace(content)) continue;
+                AddBubble(content, isPlayer);
+            }
+            StartCoroutine(ScrollToBottomNextFrame());
+        }
+
+        /// <summary>Add a bubble from external code (e.g. session history loading).</summary>
+        public void AddExternalBubble(string message, bool isPlayer)
+        {
+            AddBubble(message, isPlayer);
         }
 
     }
