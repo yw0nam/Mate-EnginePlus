@@ -17,20 +17,13 @@ namespace DesktopMatePlus
         [SerializeField] private TMP_Text createdText;
         [SerializeField] private TMP_Text updatedText;
 
-        [Header("Title Editing")]
-        [Tooltip("Add a TMP_InputField as sibling/overlay of TitleText. Hidden by default, shown on modify click.")]
-        [SerializeField] private TMP_InputField titleInputField;
-
         [Header("Active Highlight Colors")]
         public Color activeColor = new Color32(70, 70, 120, 255);
         public Color inactiveColor = new Color32(32, 44, 58, 255);
 
         private SessionPanelController _controller;
         private string _sessionId;
-        private string _fullTitle;
-        private string _originalTitle;
         private Button _slotButton;
-        private bool _isEditing;
 
         public string SessionId => _sessionId;
 
@@ -43,21 +36,15 @@ namespace DesktopMatePlus
             _sessionId = session.session_id;
             _controller = controller;
 
-            _fullTitle = !string.IsNullOrEmpty(session.title)
+            string fullTitle = !string.IsNullOrEmpty(session.title)
                 ? session.title
                 : $"{_sessionId[..Math.Min(8, _sessionId.Length)]}...";
 
-            if (titleText != null) titleText.text = TruncateTitle(_fullTitle);
+            if (titleText != null) titleText.text = TruncateTitle(fullTitle);
             if (createdText != null) createdText.text = FormatTimestamp(session.created_at);
             if (updatedText != null) updatedText.text = FormatTimestamp(session.updated_at);
 
-            if (titleInputField != null)
-                titleInputField.gameObject.SetActive(false);
-            if (titleText != null)
-                titleText.gameObject.SetActive(true);
-
             _slotButton = GetComponent<Button>();
-            _isEditing = false;
         }
 
         /// <summary>
@@ -66,8 +53,7 @@ namespace DesktopMatePlus
         /// </summary>
         public void OnSlotClicked()
         {
-            Debug.Log($"[SessionSlot] OnSlotClicked: sessionId={_sessionId} controller={(_controller != null ? "OK" : "NULL")} isEditing={_isEditing}");
-            if (_isEditing) return;
+            Debug.Log($"[SessionSlot] OnSlotClicked: sessionId={_sessionId} controller={(_controller != null ? "OK" : "NULL")}");
             _controller?.SelectSession(_sessionId);
         }
 
@@ -81,30 +67,6 @@ namespace DesktopMatePlus
             _controller?.DeleteSession(_sessionId);
         }
 
-        /// <summary>
-        /// Wire to SessionTitleModifyButton.onClick in Inspector.
-        /// Enters inline title editing mode.
-        /// </summary>
-        public void OnModifyTitleClicked()
-        {
-            if (titleInputField == null)
-            {
-                Debug.LogWarning("[SessionSlot] TitleInputField not assigned — cannot edit title.");
-                return;
-            }
-            EnterEditMode();
-        }
-
-        /// <summary>
-        /// Wire to TitleInputField.onEndEdit in Inspector.
-        /// Saves the edited title (or cancels if unchanged).
-        /// </summary>
-        public void OnTitleEditFinished(string value)
-        {
-            if (!_isEditing) return;
-            ExitEditMode(value);
-        }
-
         public void SetHighlight(bool isActive)
         {
             if (_slotButton == null) _slotButton = GetComponent<Button>();
@@ -114,51 +76,6 @@ namespace DesktopMatePlus
             colors.normalColor = isActive ? activeColor : inactiveColor;
             colors.selectedColor = isActive ? activeColor : inactiveColor;
             _slotButton.colors = colors;
-        }
-
-        private void EnterEditMode()
-        {
-            _isEditing = true;
-            _originalTitle = _fullTitle;
-
-            titleText.gameObject.SetActive(false);
-            titleInputField.gameObject.SetActive(true);
-            // Bring InputField to front so nothing overlaps it
-            titleInputField.transform.SetAsLastSibling();
-            titleInputField.text = _originalTitle;
-
-            // Disable the root Button while editing so it doesn't intercept clicks/focus
-            if (_slotButton != null) _slotButton.interactable = false;
-
-            StartCoroutine(ActivateInputNextFrame());
-        }
-
-        private System.Collections.IEnumerator ActivateInputNextFrame()
-        {
-            yield return null;
-            titleInputField.Select();
-            titleInputField.ActivateInputField();
-        }
-
-        private void ExitEditMode(string newTitle)
-        {
-            _isEditing = false;
-
-            // Re-enable slot button
-            if (_slotButton != null) _slotButton.interactable = true;
-
-            if (titleInputField != null)
-                titleInputField.gameObject.SetActive(false);
-            if (titleText != null)
-                titleText.gameObject.SetActive(true);
-
-            string trimmed = newTitle?.Trim();
-            if (!string.IsNullOrEmpty(trimmed) && trimmed != _originalTitle)
-            {
-                _fullTitle = trimmed;
-                titleText.text = TruncateTitle(_fullTitle);
-                _controller?.UpdateSessionTitle(_sessionId, trimmed);
-            }
         }
 
         private static string TruncateTitle(string title) =>

@@ -76,14 +76,6 @@ namespace DesktopMatePlus
             }, err => Debug.LogWarning($"[SessionPanel] Delete error: {err}"));
         }
 
-        /// <summary>Called by SessionSlotHandler when title is edited.</summary>
-        public void UpdateSessionTitle(string sessionId, string newTitle)
-        {
-            apiClient?.UpdateSessionTitle(sessionId, newTitle);
-            var session = _sessions.Find(s => s.session_id == sessionId);
-            if (session != null) session.title = newTitle;
-        }
-
         /// <summary>Wire Footer "New Chat" button to this in Inspector.</summary>
         public void OnNewChatClicked()
         {
@@ -158,14 +150,11 @@ namespace DesktopMatePlus
             _sessions.Insert(0, new SessionInfo
             {
                 session_id = sessionId,
-                user_id = dmpClient?.userId,
-                agent_id = dmpClient?.agentId,
                 created_at = DateTime.UtcNow.ToString("o"),
                 updated_at = DateTime.UtcNow.ToString("o"),
                 title = firstMessage?.Length > 20 ? firstMessage[..20] + "..." : firstMessage
             });
             _activeSessionId = sessionId;
-            apiClient?.UpdateSessionTitle(sessionId, _sessions[0].title);
             RebuildUI();
         }
     }

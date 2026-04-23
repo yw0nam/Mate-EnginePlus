@@ -1,8 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Text;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -12,9 +10,10 @@ namespace DesktopMatePlus
     [Serializable]
     public class SessionInfo
     {
+        // Full nanobot session key ("desktop_mate:<chat_id>"). Treat as opaque
+        // on the UI side; strip the "desktop_mate:" prefix only when handing
+        // a chat_id to the WebSocket layer.
         public string session_id;
-        public string user_id;
-        public string agent_id;
         public string created_at;
         public string updated_at;
         public string title;
@@ -28,15 +27,24 @@ namespace DesktopMatePlus
     }
 
     /// <summary>
-    /// REST client for DesktopMatePlus STM (Short-Term Memory) session APIs.
+    /// REST client for the DesktopMate channel's session routes (list / messages / delete).
+    /// Endpoints mirror nanobot's WebSocketChannel surface and share the static
+    /// ?token= used for the WebSocket handshake. The FE's title-edit flow was
+    /// removed — nanobot doesn't expose a PATCH metadata endpoint and the UX was
+    /// deferred.
     /// </summary>
     public class SessionApiClient : MonoBehaviour
     {
         public DesktopMatePlusClient dmpClient;
 
         private string BaseUrl => $"http://{dmpClient.host}:{dmpClient.port}";
-        private string UserId => dmpClient.userId;
-        private string AgentId => dmpClient.agentId;
+        private string Token => dmpClient.token;
+
+        private string WithToken(string pathWithQuery)
+        {
+            string sep = pathWithQuery.Contains("?") ? "&" : "?";
+            return $"{pathWithQuery}{sep}token={Uri.EscapeDataString(Token ?? string.Empty)}";
+        }
 
         // =================================================================
         // Public API
@@ -44,7 +52,7 @@ namespace DesktopMatePlus
 
         public void ListSessions(Action<List<SessionInfo>> onSuccess, Action<string> onError = null)
         {
-            string url = $"{BaseUrl}/v1/stm/sessions?user_id={Uri.EscapeDataString(UserId)}&agent_id={Uri.EscapeDataString(AgentId)}";
+            string url = WithToken($"{BaseUrl}/api/sessions");
             StartCoroutine(GetRequest(url, json =>
             {
                 try
@@ -58,12 +66,12 @@ namespace DesktopMatePlus
                         {
                             sessions.Add(new SessionInfo
                             {
-                                session_id = item["session_id"]?.ToString(),
-                                user_id = item["user_id"]?.ToString(),
-                                agent_id = item["agent_id"]?.ToString(),
+                                session_id = item["key"]?.ToString(),
                                 created_at = item["created_at"]?.ToString(),
                                 updated_at = item["updated_at"]?.ToString(),
-                                title = item["metadata"]?["title"]?.ToString()
+                                // Server doesn't persist titles; FE infers a display
+                                // label from the first user message instead.
+                                title = null,
                             });
                         }
                     }
@@ -78,7 +86,7 @@ namespace DesktopMatePlus
 
         public void GetChatHistory(string sessionId, int limit, Action<List<ChatMessageData>> onSuccess, Action<string> onError = null)
         {
-            string url = $"{BaseUrl}/v1/stm/get-chat-history?session_id={Uri.EscapeDataString(sessionId)}&user_id={Uri.EscapeDataString(UserId)}&agent_id={Uri.EscapeDataString(AgentId)}&limit={limit}";
+            string url = WithToken($"{BaseUrl}/api/sessions/{Uri.EscapeDataString(sessionId)}/messages");
             StartCoroutine(GetRequest(url, json =>
             {
                 try
@@ -91,7 +99,6 @@ namespace DesktopMatePlus
                         foreach (var item in arr)
                         {
                             string role = item["role"]?.ToString();
-                            // Skip system and tool messages for UI display
                             if (role == "system" || role == "tool") continue;
                             messages.Add(new ChatMessageData
                             {
@@ -99,6 +106,13 @@ namespace DesktopMatePlus
                                 content = item["content"]?.ToString()
                             });
                         }
+                    }
+                    // Nanobot's /messages returns the full session. Clip to the
+                    // caller's requested tail locally so the sidebar/UI stays
+                    // bounded on long sessions.
+                    if (limit > 0 && messages.Count > limit)
+                    {
+                        messages = messages.GetRange(messages.Count - limit, limit);
                     }
                     onSuccess?.Invoke(messages);
                 }
@@ -111,20 +125,10 @@ namespace DesktopMatePlus
 
         public void DeleteSession(string sessionId, Action onSuccess, Action<string> onError = null)
         {
-            string url = $"{BaseUrl}/v1/stm/sessions/{Uri.EscapeDataString(sessionId)}?user_id={Uri.EscapeDataString(UserId)}&agent_id={Uri.EscapeDataString(AgentId)}";
-            StartCoroutine(DeleteRequest(url, _ => onSuccess?.Invoke(), onError));
-        }
-
-        public void UpdateSessionTitle(string sessionId, string title, Action onSuccess = null, Action<string> onError = null)
-        {
-            string url = $"{BaseUrl}/v1/stm/sessions/{Uri.EscapeDataString(sessionId)}/metadata";
-            var body = new
-            {
-                session_id = sessionId,
-                metadata = new { title }
-            };
-            string jsonBody = JsonConvert.SerializeObject(body);
-            StartCoroutine(PatchRequest(url, jsonBody, _ => onSuccess?.Invoke(), onError));
+            // Note: nanobot's WebSocketChannel embeds delete as a GET because the
+            // websockets library's HTTP parser only accepts GET. We mirror that.
+            string url = WithToken($"{BaseUrl}/api/sessions/{Uri.EscapeDataString(sessionId)}/delete");
+            StartCoroutine(GetRequest(url, _ => onSuccess?.Invoke(), onError));
         }
 
         // =================================================================
@@ -139,43 +143,6 @@ namespace DesktopMatePlus
             if (request.result != UnityWebRequest.Result.Success)
             {
                 Debug.LogWarning($"[SessionAPI] GET failed: {request.error} url={url}");
-                onError?.Invoke(request.error);
-            }
-            else
-            {
-                onSuccess?.Invoke(request.downloadHandler.text);
-            }
-        }
-
-        private IEnumerator DeleteRequest(string url, Action<string> onSuccess, Action<string> onError)
-        {
-            using var request = UnityWebRequest.Delete(url);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            yield return request.SendWebRequest();
-
-            if (request.result != UnityWebRequest.Result.Success)
-            {
-                Debug.LogWarning($"[SessionAPI] DELETE failed: {request.error}");
-                onError?.Invoke(request.error);
-            }
-            else
-            {
-                onSuccess?.Invoke(request.downloadHandler.text);
-            }
-        }
-
-        private IEnumerator PatchRequest(string url, string jsonBody, Action<string> onSuccess, Action<string> onError)
-        {
-            byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
-            using var request = new UnityWebRequest(url, "PATCH");
-            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
-            yield return request.SendWebRequest();
-
-            if (request.result != UnityWebRequest.Result.Success)
-            {
-                Debug.LogWarning($"[SessionAPI] PATCH failed: {request.error}");
                 onError?.Invoke(request.error);
             }
             else
