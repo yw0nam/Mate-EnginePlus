@@ -11,7 +11,10 @@ namespace DesktopMatePlus
     // Mirrors the Pydantic models in nanobot_runtime's desktop_mate_protocol.py.
     // Inbound validation on the server uses a discriminated union on ``type``.
     // ``content`` must be non-empty. Extra fields are ignored — safe to add
-    // more later without breaking the server.
+    // more later without breaking the server. ``images`` mirrors the optional
+    // ``images: list[str]`` field on the server-side models: each entry is a
+    // full ``data:image/png;base64,...`` data URL the server will decode via
+    // ``save_base64_data_url``.
     // =========================================================================
 
     [Serializable]
@@ -22,6 +25,8 @@ namespace DesktopMatePlus
         public bool tts_enabled = true;
         [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
         public string reference_id;
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public string[] images;
     }
 
     [Serializable]
@@ -33,6 +38,8 @@ namespace DesktopMatePlus
         public bool tts_enabled = true;
         [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
         public string reference_id;
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public string[] images;
     }
 
     // =========================================================================

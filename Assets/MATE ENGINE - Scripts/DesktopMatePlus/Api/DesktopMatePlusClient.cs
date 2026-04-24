@@ -150,8 +150,12 @@ namespace DesktopMatePlus
         /// is null/empty, a ``new_chat`` frame is sent and the server will
         /// reveal the new chat_id via the first ``stream_start``; otherwise a
         /// ``message`` frame is sent against the current session.
+        ///
+        /// <paramref name="images"/> is an optional list of ``data:image/png;base64,...``
+        /// data URLs; when null it is omitted from the wire frame via
+        /// <c>NullValueHandling.Ignore</c>.
         /// </summary>
-        public void SendChat(string message, Action<string> onPartialToken, Action<TtsChunkData> onTtsChunk, Action onComplete)
+        public void SendChat(string message, Action<string> onPartialToken, Action<TtsChunkData> onTtsChunk, Action onComplete, string[] images = null)
         {
             if (!IsAuthenticated)
             {
@@ -173,6 +177,7 @@ namespace DesktopMatePlus
                     content = message,
                     tts_enabled = ttsEnabled,
                     reference_id = referenceId,
+                    images = images,
                 };
             }
             else
@@ -183,6 +188,7 @@ namespace DesktopMatePlus
                     content = message,
                     tts_enabled = ttsEnabled,
                     reference_id = referenceId,
+                    images = images,
                 };
             }
             _ = SendAsync(MessageParser.Serialize(frame));
