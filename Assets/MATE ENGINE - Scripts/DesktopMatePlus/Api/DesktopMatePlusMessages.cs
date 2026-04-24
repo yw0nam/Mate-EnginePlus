@@ -6,92 +6,69 @@ using Newtonsoft.Json.Linq;
 namespace DesktopMatePlus
 {
     // =========================================================================
-    // Base
+    // Client -> Server (outbound frames)
+    //
+    // Mirrors the Pydantic models in nanobot_runtime's desktop_mate_protocol.py.
+    // Inbound validation on the server uses a discriminated union on ``type``.
+    // ``content`` must be non-empty. Extra fields are ignored — safe to add
+    // more later without breaking the server.
     // =========================================================================
 
     [Serializable]
-    public class BaseMessage
+    public class NewChatMessage
     {
-        public string type;
-        public string id;
-        public double? timestamp;
-    }
-
-    // =========================================================================
-    // Client -> Server
-    // =========================================================================
-
-    [Serializable]
-    public class AuthorizeMessage
-    {
-        public string type = "authorize";
-        public string token;
-    }
-
-    [Serializable]
-    public class PongMessage
-    {
-        public string type = "pong";
-    }
-
-    [Serializable]
-    public class ImageUrl
-    {
-        public string url;
-        public string detail = "auto";
-    }
-
-    [Serializable]
-    public class ImageContent
-    {
-        public string type = "image_url";
-        public ImageUrl image_url;
-    }
-
-    [Serializable]
-    public class OutgoingChatMessage
-    {
-        public string type = "chat_message";
+        public string type = "new_chat";
         public string content;
-        public string agent_id;
-        public string user_id;
-        public string persona_id = "yuri";
-        public string session_id;
         public bool tts_enabled = true;
-        public string reference_id;
-        public int limit = 10;
         [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
-        public ImageContent[] images;
+        public string reference_id;
     }
 
     [Serializable]
-    public class InterruptStreamMessage
+    public class ChatMessage
     {
-        public string type = "interrupt_stream";
-        public string turn_id;
+        public string type = "message";
+        public string chat_id;
+        public string content;
+        public bool tts_enabled = true;
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public string reference_id;
     }
 
     // =========================================================================
-    // Server -> Client (parsed from JObject)
+    // Server -> Client (inbound events)
+    //
+    // The server discriminates with ``event`` (not ``type``). Every event
+    // except ``ready`` carries a ``chat_id``. ``proactive`` is optional and
+    // true only for server-initiated (idle / cron) turns.
     // =========================================================================
+
+    public class ReadyData
+    {
+        public string connection_id;
+        public string client_id;
+        public double server_time;
+    }
 
     public class StreamStartData
     {
-        public string turn_id;
-        public string session_id;
+        public string chat_id;
+        public bool proactive;
     }
 
-    public class StreamTokenData
+    public class DeltaData
     {
-        public string chunk;
-        public string node;
+        public string chat_id;
+        public string text;
+        public string stream_id;
+        public bool proactive;
     }
 
     public class StreamEndData
     {
-        public string turn_id;
-        public string session_id;
+        public string chat_id;
         public string content;
+        public bool proactive;
     }
 
     public class TimelineKeyframe
@@ -102,27 +79,17 @@ namespace DesktopMatePlus
 
     public class TtsChunkData
     {
+        public string chat_id;
         public int sequence;
         public string text;
+        // audio_base64 and emotion are "explicit-null-significant" — the server
+        // keeps the keys with null values to mean "synthesis failed, play
+        // silence". Downstream code should treat null as a valid, non-error
+        // outcome.
         public string audio_base64;
         public string emotion;
         public List<TimelineKeyframe> keyframes = new();
-    }
-
-    public class ErrorData
-    {
-        public string error;
-        public int? code;
-    }
-
-    public class AuthorizeSuccessData
-    {
-        public string connection_id;
-    }
-
-    public class AuthorizeErrorData
-    {
-        public string error;
+        public bool proactive;
     }
 
     // =========================================================================
@@ -131,39 +98,57 @@ namespace DesktopMatePlus
 
     public static class MessageParser
     {
-        public static string GetType(string json)
+        /// <summary>Return the inbound envelope's ``event`` field, or null for non-JSON frames.</summary>
+        public static string GetEvent(string json)
         {
             var obj = JObject.Parse(json);
-            return obj["type"]?.ToString();
+            return obj["event"]?.ToString();
         }
+
+        public static ReadyData ParseReady(JObject obj) => new()
+        {
+            connection_id = obj["connection_id"]?.ToString(),
+            client_id = obj["client_id"]?.ToString(),
+            server_time = obj["server_time"]?.Value<double>() ?? 0.0,
+        };
 
         public static StreamStartData ParseStreamStart(JObject obj) => new()
         {
-            turn_id = obj["turn_id"]?.ToString(),
-            session_id = obj["session_id"]?.ToString()
+            chat_id = obj["chat_id"]?.ToString(),
+            proactive = obj["proactive"]?.Value<bool>() ?? false,
         };
 
-        public static StreamTokenData ParseStreamToken(JObject obj) => new()
+        public static DeltaData ParseDelta(JObject obj) => new()
         {
-            chunk = obj["chunk"]?.ToString(),
-            node = obj["node"]?.ToString()
+            chat_id = obj["chat_id"]?.ToString(),
+            text = obj["text"]?.ToString(),
+            stream_id = obj["stream_id"]?.ToString(),
+            proactive = obj["proactive"]?.Value<bool>() ?? false,
         };
 
         public static StreamEndData ParseStreamEnd(JObject obj) => new()
         {
-            turn_id = obj["turn_id"]?.ToString(),
-            session_id = obj["session_id"]?.ToString(),
-            content = obj["content"]?.ToString()
+            chat_id = obj["chat_id"]?.ToString(),
+            content = obj["content"]?.ToString(),
+            proactive = obj["proactive"]?.Value<bool>() ?? false,
         };
 
         public static TtsChunkData ParseTtsChunk(JObject obj)
         {
             var data = new TtsChunkData
             {
+                chat_id = obj["chat_id"]?.ToString(),
                 sequence = obj["sequence"]?.Value<int>() ?? 0,
                 text = obj["text"]?.ToString(),
-                audio_base64 = obj["audio_base64"]?.ToString(),
-                emotion = obj["emotion"]?.ToString()
+                // Preserve explicit-null: .ToString() on a JToken whose Type is
+                // Null returns "", which we treat the same as null downstream.
+                audio_base64 = obj["audio_base64"]?.Type == JTokenType.Null
+                    ? null
+                    : obj["audio_base64"]?.ToString(),
+                emotion = obj["emotion"]?.Type == JTokenType.Null
+                    ? null
+                    : obj["emotion"]?.ToString(),
+                proactive = obj["proactive"]?.Value<bool>() ?? false,
             };
 
             var kfArray = obj["keyframes"] as JArray;
@@ -189,25 +174,7 @@ namespace DesktopMatePlus
             return data;
         }
 
-        public static ErrorData ParseError(JObject obj) => new()
-        {
-            error = obj["error"]?.ToString(),
-            code = obj["code"]?.Value<int>()
-        };
-
-        public static AuthorizeSuccessData ParseAuthorizeSuccess(JObject obj) => new()
-        {
-            connection_id = obj["connection_id"]?.ToString()
-        };
-
-        public static AuthorizeErrorData ParseAuthorizeError(JObject obj) => new()
-        {
-            error = obj["error"]?.ToString()
-        };
-
-        /// <summary>
-        /// Serialize a client message to JSON.
-        /// </summary>
+        /// <summary>Serialize a client message to JSON.</summary>
         public static string Serialize(object msg) => JsonConvert.SerializeObject(msg);
     }
 }

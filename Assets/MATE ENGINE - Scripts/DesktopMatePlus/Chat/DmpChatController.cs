@@ -253,9 +253,12 @@ namespace DesktopMatePlus
                         _wasNewSession = false;
                     }
                     ScrollToBottom();
-                },
-                images: captureImages
+                }
             );
+            // NOTE: captureImages is intentionally not forwarded — the new
+            // channel protocol only accepts string content. Screen-capture
+            // context is tracked under Phase 5.5 (MCP context provider).
+            _ = captureImages;
         }
 
         // ==== Message Management ====

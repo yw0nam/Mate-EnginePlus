@@ -10,20 +10,29 @@ using UnityEngine;
 namespace DesktopMatePlus
 {
     /// <summary>
-    /// WebSocket client for the DesktopMatePlus backend.
-    /// Manages connection lifecycle, authentication, heartbeat, and message routing.
+    /// WebSocket client for the DesktopMate channel on the nanobot_runtime
+    /// backend. Speaks the protocol defined in
+    /// ``nanobot_runtime/src/nanobot_runtime/channels/desktop_mate_protocol.py``.
+    ///
+    /// Handshake is URL-based (``?token=&client_id=``) — no post-connect
+    /// ``authorize`` frame. The server signals readiness with an ``event: "ready"``
+    /// frame. Every subsequent inbound event carries ``chat_id``; outbound
+    /// traffic is either a ``new_chat`` (no chat_id, server mints one) or a
+    /// ``message`` (with the bare chat_id, prefix stripped). ``SessionId``
+    /// stores the full ``desktop_mate:&lt;chat_id&gt;`` key so it matches the
+    /// REST surface's session keys — callers never assemble the prefix by
+    /// hand, they use :meth:`ToSessionKey`/:meth:`ToChatId`.
     /// </summary>
     public class DesktopMatePlusClient : MonoBehaviour
     {
+        public const string ChannelPrefix = "desktop_mate:";
+
         [Header("Connection")]
         public string host = "127.0.0.1";
-        public int port = 5600;
+        public int port = 8765;
+        public string path = "/ws";
         public string token = "unity-client";
-
-        [Header("Identity")]
-        public string agentId = "yuri-assistant";
-        public string userId = "unity-user";
-        public string personaId = "yuri";
+        public string clientId = "unity-client";
 
         [Header("TTS")]
         public bool ttsEnabled = true;
@@ -32,20 +41,28 @@ namespace DesktopMatePlus
         [Header("Settings")]
         public float reconnectDelay = 3f;
         public bool autoReconnect = true;
-        public int stmLimit = 10;
+        // WebSocket protocol-level keepalive interval. Native ping/pong —
+        // nothing application-level to wire up.
+        public float keepAliveSeconds = 20f;
 
         // State
         public bool IsConnected => _ws != null && _ws.State == WebSocketState.Open;
         public bool IsAuthenticated { get; private set; }
         public string ConnectionId { get; private set; }
+
+        /// <summary>
+        /// Full nanobot session key ("desktop_mate:&lt;chat_id&gt;") or null for
+        /// a fresh conversation. Shared with the REST surface so the sidebar
+        /// and chat panel agree on identity.
+        /// </summary>
         public string SessionId { get; set; }
 
         // Events (main-thread safe via _mainThreadQueue)
-        public event Action<StreamTokenData> OnStreamToken;
+        public event Action<ReadyData> OnReady;
+        public event Action<DeltaData> OnDelta;
         public event Action<TtsChunkData> OnTtsChunk;
         public event Action<StreamStartData> OnStreamStart;
         public event Action<StreamEndData> OnStreamEnd;
-        public event Action<ErrorData> OnError;
         public event Action OnConnected;
         public event Action<string> OnDisconnected;
 
@@ -60,7 +77,21 @@ namespace DesktopMatePlus
         private Action<TtsChunkData> _activeTtsCallback;
         private Action _activeCompletionCallback;
 
-        private string WsUrl => $"ws://{host}:{port}/v1/chat/stream";
+        private string WsUrl
+        {
+            get
+            {
+                string normalisedPath = string.IsNullOrEmpty(path) ? "/ws" : path;
+                if (!normalisedPath.StartsWith("/")) normalisedPath = "/" + normalisedPath;
+                string qs = $"?token={Uri.EscapeDataString(token ?? string.Empty)}" +
+                            $"&client_id={Uri.EscapeDataString(clientId ?? string.Empty)}";
+                // Only emit ``tts=0`` for the disabled case. Server default is enabled,
+                // so the positive case stays implicit and matches the inbound-message
+                // ``tts_enabled`` field exactly.
+                if (!ttsEnabled) qs += "&tts=0";
+                return $"ws://{host}:{port}{normalisedPath}{qs}";
+            }
+        }
 
         void Update()
         {
@@ -79,24 +110,35 @@ namespace DesktopMatePlus
         }
 
         // =================================================================
+        // Prefix helpers
+        // =================================================================
+
+        /// <summary>Prefix a bare chat_id with ``desktop_mate:`` if not already present.</summary>
+        public static string ToSessionKey(string chatId)
+        {
+            if (string.IsNullOrEmpty(chatId)) return chatId;
+            return chatId.StartsWith(ChannelPrefix) ? chatId : ChannelPrefix + chatId;
+        }
+
+        /// <summary>Strip the ``desktop_mate:`` prefix from a session key to get the bare chat_id.</summary>
+        public static string ToChatId(string sessionKey)
+        {
+            if (string.IsNullOrEmpty(sessionKey)) return sessionKey;
+            return sessionKey.StartsWith(ChannelPrefix) ? sessionKey[ChannelPrefix.Length..] : sessionKey;
+        }
+
+        // =================================================================
         // Public API
         // =================================================================
 
-        /// <summary>
-        /// Connect to the DesktopMatePlus backend.
-        /// </summary>
         public void Connect()
         {
             if (IsConnected && IsAuthenticated) return;
-            // Reset stale state (e.g. after domain reload)
             IsAuthenticated = false;
             ConnectionId = null;
             _ = ConnectAsync();
         }
 
-        /// <summary>
-        /// Disconnect from the backend.
-        /// </summary>
         public void Disconnect()
         {
             _intentionalClose = true;
@@ -104,10 +146,12 @@ namespace DesktopMatePlus
         }
 
         /// <summary>
-        /// Send a chat message with streaming callbacks.
-        /// This is the primary API for ChatBot.cs integration.
+        /// Send a chat message with streaming callbacks. If :prop:`SessionId`
+        /// is null/empty, a ``new_chat`` frame is sent and the server will
+        /// reveal the new chat_id via the first ``stream_start``; otherwise a
+        /// ``message`` frame is sent against the current session.
         /// </summary>
-        public void SendChat(string message, Action<string> onPartialToken, Action<TtsChunkData> onTtsChunk, Action onComplete, string[] images = null)
+        public void SendChat(string message, Action<string> onPartialToken, Action<TtsChunkData> onTtsChunk, Action onComplete)
         {
             if (!IsAuthenticated)
             {
@@ -121,37 +165,44 @@ namespace DesktopMatePlus
             _activeTtsCallback = onTtsChunk;
             _activeCompletionCallback = onComplete;
 
-            var msg = new OutgoingChatMessage
+            object frame;
+            if (string.IsNullOrEmpty(SessionId))
             {
-                content = message,
-                agent_id = agentId,
-                user_id = userId,
-                persona_id = personaId,
-                session_id = SessionId,
-                tts_enabled = ttsEnabled,
-                reference_id = referenceId,
-                limit = stmLimit
-            };
-            if (images != null && images.Length > 0)
-            {
-                msg.images = new ImageContent[images.Length];
-                for (int i = 0; i < images.Length; i++)
-                    msg.images[i] = new ImageContent
-                    {
-                        image_url = new ImageUrl { url = $"data:image/png;base64,{images[i]}" }
-                    };
+                frame = new NewChatMessage
+                {
+                    content = message,
+                    tts_enabled = ttsEnabled,
+                    reference_id = referenceId,
+                };
             }
-            _ = SendAsync(MessageParser.Serialize(msg));
+            else
+            {
+                frame = new ChatMessage
+                {
+                    chat_id = ToChatId(SessionId),
+                    content = message,
+                    tts_enabled = ttsEnabled,
+                    reference_id = referenceId,
+                };
+            }
+            _ = SendAsync(MessageParser.Serialize(frame));
         }
 
         /// <summary>
-        /// Interrupt the current stream.
+        /// Best-effort request to stop the in-flight stream. The new protocol
+        /// has no server-side interrupt frame, so this only clears local
+        /// active-turn callbacks; the remaining deltas/tts_chunks from the
+        /// server are silently dropped until the next ``stream_end``.
         /// </summary>
         public void InterruptStream()
         {
-            if (!IsConnected) return;
-            var msg = new InterruptStreamMessage();
-            _ = SendAsync(MessageParser.Serialize(msg));
+            _mainThreadQueue.Enqueue(() =>
+            {
+                _activePartialCallback = null;
+                _activeTtsCallback = null;
+                _activeCompletionCallback?.Invoke();
+                _activeCompletionCallback = null;
+            });
         }
 
         // =================================================================
@@ -167,15 +218,16 @@ namespace DesktopMatePlus
             try
             {
                 _ws = new ClientWebSocket();
+                if (keepAliveSeconds > 0)
+                {
+                    _ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(keepAliveSeconds);
+                }
                 await _ws.ConnectAsync(new Uri(WsUrl), _cts.Token);
                 Debug.Log($"[DMP] Connected to {WsUrl}");
                 _mainThreadQueue.Enqueue(() => OnConnected?.Invoke());
 
-                // Authenticate
-                var auth = new AuthorizeMessage { token = token };
-                await SendAsync(MessageParser.Serialize(auth));
-
-                // Start receive loop
+                // Start receive loop — IsAuthenticated will be set on the
+                // first ``ready`` frame.
                 _ = ReceiveLoopAsync(_cts.Token);
             }
             catch (Exception e)
@@ -231,45 +283,48 @@ namespace DesktopMatePlus
             try
             {
                 var obj = JObject.Parse(json);
-                string msgType = obj["type"]?.ToString();
+                string evt = obj["event"]?.ToString();
 
-                switch (msgType)
+                switch (evt)
                 {
-                    case "authorize_success":
-                        var authData = MessageParser.ParseAuthorizeSuccess(obj);
-                        ConnectionId = authData.connection_id;
+                    case "ready":
+                        var ready = MessageParser.ParseReady(obj);
+                        ConnectionId = ready.connection_id;
                         IsAuthenticated = true;
-                        Debug.Log($"[DMP] Authenticated: {ConnectionId}");
-                        break;
-
-                    case "authorize_error":
-                        var authErr = MessageParser.ParseAuthorizeError(obj);
-                        Debug.LogError($"[DMP] Auth failed: {authErr.error}");
-                        _intentionalClose = true;
-                        break;
-
-                    case "ping":
-                        _ = SendAsync(MessageParser.Serialize(new PongMessage()));
+                        Debug.Log($"[DMP] Ready: connection_id={ConnectionId}");
+                        _mainThreadQueue.Enqueue(() => OnReady?.Invoke(ready));
                         break;
 
                     case "stream_start":
                         var startData = MessageParser.ParseStreamStart(obj);
+                        // The first turn on a fresh session reveals the
+                        // server-minted chat_id here. Rewrite SessionId so
+                        // subsequent ``message`` frames target the same session.
+                        if (string.IsNullOrEmpty(SessionId) && !string.IsNullOrEmpty(startData.chat_id))
+                        {
+                            SessionId = ToSessionKey(startData.chat_id);
+                        }
                         _fullResponseText = "";
                         _mainThreadQueue.Enqueue(() => OnStreamStart?.Invoke(startData));
                         break;
 
-                    case "stream_token":
-                        var tokenData = MessageParser.ParseStreamToken(obj);
-                        _fullResponseText += tokenData.chunk;
+                    case "delta":
+                        var deltaData = MessageParser.ParseDelta(obj);
+                        _fullResponseText += deltaData.text;
                         var currentText = _fullResponseText;
                         _mainThreadQueue.Enqueue(() =>
                         {
                             _activePartialCallback?.Invoke(currentText);
-                            OnStreamToken?.Invoke(tokenData);
+                            OnDelta?.Invoke(deltaData);
                         });
                         break;
 
                     case "tts_chunk":
+                        // ``tts_chunk`` is permitted to arrive *after* ``stream_end``
+                        // — the server's TTS barrier is best-effort and async
+                        // synthesis may land out of order at the wire level. The
+                        // FE must keep the socket open and dispatch the chunk
+                        // normally.
                         var ttsData = MessageParser.ParseTtsChunk(obj);
                         _mainThreadQueue.Enqueue(() =>
                         {
@@ -280,8 +335,8 @@ namespace DesktopMatePlus
 
                     case "stream_end":
                         var endData = MessageParser.ParseStreamEnd(obj);
-                        if (!string.IsNullOrEmpty(endData.session_id))
-                            SessionId = endData.session_id;
+                        if (!string.IsNullOrEmpty(endData.chat_id))
+                            SessionId = ToSessionKey(endData.chat_id);
                         _mainThreadQueue.Enqueue(() =>
                         {
                             OnStreamEnd?.Invoke(endData);
@@ -292,10 +347,9 @@ namespace DesktopMatePlus
                         });
                         break;
 
-                    case "error":
-                        var errData = MessageParser.ParseError(obj);
-                        Debug.LogWarning($"[DMP] Server error ({errData.code}): {errData.error}");
-                        _mainThreadQueue.Enqueue(() => OnError?.Invoke(errData));
+                    default:
+                        if (!string.IsNullOrEmpty(evt))
+                            Debug.LogWarning($"[DMP] Unknown event '{evt}': {json}");
                         break;
                 }
             }
