@@ -193,7 +193,9 @@ namespace DesktopMatePlus
                 {
                     string b64 = ScreenCaptureManager.ToBase64PNG(tex);
                     if (b64 != null)
-                        captureImages = new[] { b64 };
+                        // 서버 측 save_base64_data_url 은 data URL 형식을 요구한다.
+                        // ScreenCaptureManager 는 항상 PNG 로 인코딩하므로 MIME 은 고정.
+                        captureImages = new[] { $"data:image/png;base64,{b64}" };
                     else
                         UpdateConnectionStatus(_connected, "캡처 실패: 이미지 크기 초과");
                     UnityEngine.Object.Destroy(tex);
@@ -253,12 +255,9 @@ namespace DesktopMatePlus
                         _wasNewSession = false;
                     }
                     ScrollToBottom();
-                }
+                },
+                images: captureImages
             );
-            // NOTE: captureImages is intentionally not forwarded — the new
-            // channel protocol only accepts string content. Screen-capture
-            // context is tracked under Phase 5.5 (MCP context provider).
-            _ = captureImages;
         }
 
         // ==== Message Management ====
