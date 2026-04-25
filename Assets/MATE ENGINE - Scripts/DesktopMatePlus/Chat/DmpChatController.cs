@@ -57,6 +57,11 @@ namespace DesktopMatePlus
         private string _lastSentMessage;
         private bool _wasNewSession;
 
+        // Buffer for proactive (server-initiated) turn text.
+        // User turns accumulate inside SendChat's onPartial callback; proactive
+        // turns bypass SendChat, so we accumulate here from OnDelta.
+        private string _proactiveTextBuffer;
+
         void Start()
         {
             if (messageItemTemplate != null)
@@ -67,6 +72,15 @@ namespace DesktopMatePlus
                 dmpClient.Connect();
                 dmpClient.OnConnected += OnDmpConnected;
                 dmpClient.OnDisconnected += OnDmpDisconnected;
+
+                // Proactive (server-initiated) turn arrives without a SendChat
+                // call, so the active *callback chain inside dmpClient is null.
+                // Subscribe to the global stream events to surface that content
+                // through the same UI/TTS path as user-initiated turns.
+                dmpClient.OnStreamStart += OnDmpStreamStart;
+                dmpClient.OnDelta += OnDmpDelta;
+                dmpClient.OnTtsChunk += OnDmpTtsChunk;
+                dmpClient.OnStreamEnd += OnDmpStreamEnd;
             }
 
             if (sessionPanel != null)
@@ -92,6 +106,10 @@ namespace DesktopMatePlus
             {
                 dmpClient.OnConnected -= OnDmpConnected;
                 dmpClient.OnDisconnected -= OnDmpDisconnected;
+                dmpClient.OnStreamStart -= OnDmpStreamStart;
+                dmpClient.OnDelta -= OnDmpDelta;
+                dmpClient.OnTtsChunk -= OnDmpTtsChunk;
+                dmpClient.OnStreamEnd -= OnDmpStreamEnd;
             }
             if (sessionPanel != null)
             {
@@ -119,6 +137,79 @@ namespace DesktopMatePlus
             _connected = false;
             UpdateConnectionStatus(false);
             Debug.Log($"[DMP-Chat] Disconnected: {reason}");
+        }
+
+        // ==== Proactive Turn Handling ====
+        //
+        // Proactive (server-initiated) turns — e.g. nanobot's idle watcher —
+        // arrive on the same WebSocket without a preceding SendChat call.
+        // The four handlers below filter on ``frame.proactive`` so that
+        // user-initiated turns continue to flow through the SendChat callback
+        // chain unchanged; only proactive frames are surfaced here.
+        //
+        // ``_isStreaming`` is shared with the user-turn path so concurrent
+        // streams cannot stack two AI bubbles. The server's idle scanner
+        // already gates on ``_session_locks`` to avoid mid-turn injection,
+        // so the ``_isStreaming`` guard here is defensive.
+
+        private void OnDmpStreamStart(StreamStartData data)
+        {
+            if (!data.proactive) return;
+            if (_isStreaming) return;
+
+            _isStreaming = true;
+            _proactiveTextBuffer = "";
+
+            var aiBubble = AddMessage("...", true, DateTime.Now);
+            _activeAIBubble = aiBubble;
+            if (aiBubble != null)
+                aiBubble.OnTextRevealed += ScrollToBottom;
+
+            ShowThinking(true);
+            SetInputInteractable(false);
+            SetTalking(true);
+
+            if (ttsPlayer != null) ttsPlayer.Reset();
+            if (emotionCrossfader != null) emotionCrossfader.ResetExpressions();
+        }
+
+        private void OnDmpDelta(DeltaData data)
+        {
+            if (!data.proactive) return;
+            if (_activeAIBubble == null) return;
+
+            _proactiveTextBuffer += data.text;
+            _activeAIBubble.SetChatText(_proactiveTextBuffer);
+            ScrollToBottom();
+        }
+
+        private void OnDmpTtsChunk(TtsChunkData chunk)
+        {
+            // Single source of truth for TTS playback for both user-initiated
+            // and proactive turns. Routing here (not via the SendChat
+            // callback) survives the late-arrival case where ``tts_chunk``
+            // lands after ``stream_end``.
+            if (ttsPlayer != null) ttsPlayer.EnqueueChunk(chunk);
+        }
+
+        private void OnDmpStreamEnd(StreamEndData data)
+        {
+            if (!data.proactive) return;
+            if (!_isStreaming) return;
+
+            // Final text takes precedence over the running buffer — guards
+            // against any delta we might have missed (e.g. event handler
+            // attached after a delta fired) or post-stream content rewrites.
+            if (_activeAIBubble != null && !string.IsNullOrEmpty(data.content))
+                _activeAIBubble.SetChatText(data.content);
+
+            _isStreaming = false;
+            _activeAIBubble = null;
+            _proactiveTextBuffer = null;
+            ShowThinking(false);
+            SetInputInteractable(true);
+            SetTalking(false);
+            ScrollToBottom();
         }
 
         private void UpdateConnectionStatus(bool connected, string overrideMsg = null)
@@ -237,10 +328,12 @@ namespace DesktopMatePlus
                         _activeAIBubble.SetChatText(partial);
                     ScrollToBottom();
                 },
-                onTtsChunk: (chunk) =>
-                {
-                    if (ttsPlayer != null) ttsPlayer.EnqueueChunk(chunk);
-                },
+                // TTS routing is delegated to the OnDmpTtsChunk global handler
+                // so a chunk that lands after stream_end (server-side TTS
+                // barrier is best-effort and async synthesis can land late at
+                // the wire) is still played — by stream_end the SendChat
+                // active-callback chain is already cleared.
+                onTtsChunk: null,
                 onComplete: () =>
                 {
                     _isStreaming = false;
