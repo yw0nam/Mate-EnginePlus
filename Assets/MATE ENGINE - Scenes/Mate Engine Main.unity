@@ -41213,7 +41213,7 @@ Light:
   serializedVersion: 11
   m_Type: 2
   m_Color: {r: 1, g: 0.26999998, b: 0.96203995, a: 1}
-  m_Intensity: 2.479261e-30
+  m_Intensity: 2.279429e-30
   m_Range: 0.5
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -84578,7 +84578,7 @@ Light:
   serializedVersion: 11
   m_Type: 2
   m_Color: {r: 0, g: 0.44799995, b: 1, a: 1}
-  m_Intensity: 4.958522e-30
+  m_Intensity: 4.558858e-30
   m_Range: 1
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -114217,7 +114217,7 @@ Light:
   serializedVersion: 11
   m_Type: 2
   m_Color: {r: 0, g: 0.44799995, b: 1, a: 1}
-  m_Intensity: 3.7188917e-30
+  m_Intensity: 3.4191433e-30
   m_Range: 1
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -120053,16 +120053,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DesktopMatePlus.DesktopMatePlusClient
   host: 127.0.0.1
-  port: 5500
-  token: unity-client
-  agentId: yuri-assistant
-  userId: unity-user
-  personaId: yuri
+  port: 8765
+  path: /ws
+  token: smoke-token
+  clientId: unity-client
   ttsEnabled: 1
   referenceId: "\u4E03\u6D77"
   reconnectDelay: 3
   autoReconnect: 1
-  stmLimit: 10
+  keepAliveSeconds: 20
 --- !u!1 &1551205671
 GameObject:
   m_ObjectHideFlags: 0
@@ -272982,7 +272981,7 @@ MonoBehaviour:
     groupID: ambi_lights
     exclusiveTags:
     - lights
-    fadeCurrentValue: 1.2396305e-30
+    fadeCurrentValue: 1.1397145e-30
     fadeTarget: 0
     isFading: 1
     hasYSet: 0
@@ -273006,7 +273005,7 @@ MonoBehaviour:
     groupID: ambi_lights
     exclusiveTags:
     - lights
-    fadeCurrentValue: 1.2396305e-30
+    fadeCurrentValue: 1.1397145e-30
     fadeTarget: 0
     isFading: 1
     hasYSet: 0
@@ -273030,7 +273029,7 @@ MonoBehaviour:
     groupID: ambi_lights
     exclusiveTags:
     - lights
-    fadeCurrentValue: 1.2396305e-30
+    fadeCurrentValue: 1.1397145e-30
     fadeTarget: 0
     isFading: 1
     hasYSet: 0
