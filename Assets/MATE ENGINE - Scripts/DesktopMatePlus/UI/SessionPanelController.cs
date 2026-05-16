@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Hermes;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -7,12 +8,14 @@ namespace DesktopMatePlus
 {
     /// <summary>
     /// Session explorer — manages session list, delegates per-slot UI to SessionSlotHandler.
+    /// Delete UI is intentionally inert per hermes-migration.md §3 E1.e: the
+    /// backend has no DELETE route, so Phase D removes frontend delete behavior.
     /// </summary>
     public class SessionPanelController : MonoBehaviour
     {
-        [Header("References")]
+        [Header("Hermes References")]
         public SessionApiClient apiClient;
-        public DesktopMatePlusClient dmpClient;
+        public HermesResponseClient hermesClient;
 
         [Header("Prefabs")]
         [SerializeField] private GameObject sessionItemPrefab;
@@ -55,7 +58,21 @@ namespace DesktopMatePlus
         public void SelectSession(string sessionId)
         {
             _activeSessionId = sessionId;
-            if (dmpClient != null) dmpClient.SessionId = sessionId;
+            // Restore previous_response_id chain from the loaded session's last_response_id
+            // (newly exposed by the backend). If the field is empty (legacy session
+            // pre-migration), fall back to a fresh chain.
+            var match = _sessions.Find(s => s.session_id == sessionId);
+            if (hermesClient != null)
+            {
+                if (match != null && !string.IsNullOrEmpty(match.last_response_id))
+                {
+                    hermesClient.LastResponseId = match.last_response_id;
+                }
+                else
+                {
+                    hermesClient.Reset();
+                }
+            }
             HighlightActive();
 
             apiClient?.GetChatHistory(sessionId, 50, messages =>
@@ -64,23 +81,11 @@ namespace DesktopMatePlus
             }, err => Debug.LogWarning($"[SessionPanel] History load error: {err}"));
         }
 
-        /// <summary>Called by SessionSlotHandler when delete is clicked.</summary>
-        public void DeleteSession(string sessionId)
-        {
-            apiClient?.DeleteSession(sessionId, () =>
-            {
-                _sessions.RemoveAll(s => s.session_id == sessionId);
-                RebuildUI();
-                if (_activeSessionId == sessionId)
-                    _activeSessionId = _sessions.Count > 0 ? _sessions[0].session_id : null;
-            }, err => Debug.LogWarning($"[SessionPanel] Delete error: {err}"));
-        }
-
         /// <summary>Wire Footer "New Chat" button to this in Inspector.</summary>
         public void OnNewChatClicked()
         {
             _activeSessionId = null;
-            if (dmpClient != null) dmpClient.SessionId = null;
+            hermesClient?.Reset();
             OnChatCleared?.Invoke();
         }
 
@@ -107,9 +112,7 @@ namespace DesktopMatePlus
                 if (go != null) Destroy(go);
             _slotObjects.Clear();
 
-            if (!string.IsNullOrEmpty(dmpClient?.SessionId))
-                _activeSessionId = dmpClient.SessionId;
-            else if (_sessions.Count > 0)
+            if (string.IsNullOrEmpty(_activeSessionId) && _sessions.Count > 0)
                 _activeSessionId = _sessions[0].session_id;
 
             foreach (var session in _sessions)

@@ -28337,7 +28337,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 583af8fb5d1512a4683cada62135e0f5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DesktopMatePlus.DmpChatController
-  dmpClient: {fileID: 1549975289}
+  hermesClient: {fileID: 965233913}
+  streamingOrchestrator: {fileID: 965233911}
   ttsPlayer: {fileID: 222114630}
   emotionCrossfader: {fileID: 222114632}
   chatScrollRect: {fileID: 1753383772}
@@ -28370,7 +28371,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DesktopMatePlus.SessionPanelController
   apiClient: {fileID: 621747644}
-  dmpClient: {fileID: 1549975289}
+  hermesClient: {fileID: 965233913}
   sessionItemPrefab: {fileID: 5882258186408887370, guid: ac112af5e683bb14bad278e7a4e27039, type: 3}
 --- !u!114 &621747644
 MonoBehaviour:
@@ -28384,7 +28385,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 54d4e41905116b442bca81f2eca423bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DesktopMatePlus.SessionApiClient
-  dmpClient: {fileID: 1549975289}
+  hermesClient: {fileID: 965233913}
 --- !u!114 &621747645
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -41213,7 +41214,7 @@ Light:
   serializedVersion: 11
   m_Type: 2
   m_Color: {r: 1, g: 0.26999998, b: 0.96203995, a: 1}
-  m_Intensity: 2.279429e-30
+  m_Intensity: 2.2414385e-30
   m_Range: 0.5
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -67467,6 +67468,94 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 962435054}
   m_CullTransparentMesh: 1
+--- !u!1 &965233910
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 965233914}
+  - component: {fileID: 965233913}
+  - component: {fileID: 965233912}
+  - component: {fileID: 965233911}
+  m_Layer: 0
+  m_Name: Hermes
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &965233911
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 965233910}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1c4975c4ab504941984b8f166e5e980, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Hermes::Hermes.StreamingOrchestrator
+  hermesClient: {fileID: 965233913}
+  irodoriClient: {fileID: 965233912}
+  ttsAudioPlayer: {fileID: 222114630}
+  referenceVoiceId: "\u4E03\u6D77"
+  sentenceMinChunkLength: 50
+  ttsBarrierTimeoutSeconds: 30
+--- !u!114 &965233912
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 965233910}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4db08172ba26d1843854e253f5ecf5bd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Hermes::Hermes.IrodoriClient
+  irodoriBaseUrl: http://localhost:8091
+  voicesRootPath: D:\codes\waifu\references_voices
+  defaultVoiceId: ??
+  defaultSeconds: 30
+  defaultNumSteps: 40
+  defaultCfgScaleText: 3
+  defaultCfgScaleSpeaker: 5
+--- !u!114 &965233913
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 965233910}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f9995e01ee5ea51428a8fd9bee9c831c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Hermes::Hermes.HermesResponseClient
+  host: localhost
+  port: 8642
+  apiKey: hermes_api_key
+  modelId: hermes-agent
+  store: 1
+--- !u!4 &965233914
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 965233910}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!224 &967951870 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 22479036, guid: 483c946d35a69704b9c4e151528ab04c, type: 3}
@@ -84578,7 +84667,7 @@ Light:
   serializedVersion: 11
   m_Type: 2
   m_Color: {r: 0, g: 0.44799995, b: 1, a: 1}
-  m_Intensity: 4.558858e-30
+  m_Intensity: 4.482877e-30
   m_Range: 1
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -114217,7 +114306,7 @@ Light:
   serializedVersion: 11
   m_Type: 2
   m_Color: {r: 0, g: 0.44799995, b: 1, a: 1}
-  m_Intensity: 3.4191433e-30
+  m_Intensity: 3.3621576e-30
   m_Range: 1
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -272981,7 +273070,7 @@ MonoBehaviour:
     groupID: ambi_lights
     exclusiveTags:
     - lights
-    fadeCurrentValue: 1.1397145e-30
+    fadeCurrentValue: 1.1207192e-30
     fadeTarget: 0
     isFading: 1
     hasYSet: 0
@@ -273005,7 +273094,7 @@ MonoBehaviour:
     groupID: ambi_lights
     exclusiveTags:
     - lights
-    fadeCurrentValue: 1.1397145e-30
+    fadeCurrentValue: 1.1207192e-30
     fadeTarget: 0
     isFading: 1
     hasYSet: 0
@@ -273029,7 +273118,7 @@ MonoBehaviour:
     groupID: ambi_lights
     exclusiveTags:
     - lights
-    fadeCurrentValue: 1.1397145e-30
+    fadeCurrentValue: 1.1207192e-30
     fadeTarget: 0
     isFading: 1
     hasYSet: 0
@@ -304119,3 +304208,4 @@ SceneRoots:
   - {fileID: 729955293}
   - {fileID: 585976757}
   - {fileID: 1928981197}
+  - {fileID: 965233914}

@@ -16,6 +16,7 @@ namespace DesktopMatePlus
         [SerializeField] private TMP_Text titleText;
         [SerializeField] private TMP_Text createdText;
         [SerializeField] private TMP_Text updatedText;
+        [SerializeField, Range(8, 64)] private int maxTitleChars = 24;
 
         [Header("Active Highlight Colors")]
         public Color activeColor = new Color32(70, 70, 120, 255);
@@ -38,7 +39,9 @@ namespace DesktopMatePlus
 
             string fullTitle = !string.IsNullOrEmpty(session.title)
                 ? session.title
-                : $"{_sessionId[..Math.Min(8, _sessionId.Length)]}...";
+                : !string.IsNullOrEmpty(session.preview)
+                    ? session.preview
+                    : $"Session {_sessionId[..Math.Min(8, _sessionId.Length)]}";
 
             if (titleText != null) titleText.text = TruncateTitle(fullTitle);
             if (createdText != null) createdText.text = FormatTimestamp(session.created_at);
@@ -57,16 +60,6 @@ namespace DesktopMatePlus
             _controller?.SelectSession(_sessionId);
         }
 
-        /// <summary>
-        /// Wire to SessionDeleteButton.onClick in Inspector.
-        /// Deletes this session via API and removes from list.
-        /// </summary>
-        public void OnDeleteClicked()
-        {
-            Debug.Log($"[SessionSlot] OnDeleteClicked: sessionId={_sessionId}");
-            _controller?.DeleteSession(_sessionId);
-        }
-
         public void SetHighlight(bool isActive)
         {
             if (_slotButton == null) _slotButton = GetComponent<Button>();
@@ -78,8 +71,12 @@ namespace DesktopMatePlus
             _slotButton.colors = colors;
         }
 
-        private static string TruncateTitle(string title) =>
-            title.Length > 7 ? title[..7] : title;
+        private string TruncateTitle(string title)
+        {
+            if (title.Length <= maxTitleChars)
+                return title;
+            return title[..maxTitleChars] + "…";
+        }
 
         private static string FormatTimestamp(string iso)
         {

@@ -1,21 +1,30 @@
 using System;
 using System.Collections.Generic;
+using Hermes;
 using UnityEngine;
 
 namespace DesktopMatePlus
 {
     /// <summary>
-    /// Decodes WAV base64 from tts_chunk messages and plays them in sequence order.
+    /// Decodes WAV bytes and plays them in sequence order.
     /// </summary>
     [RequireComponent(typeof(AudioSource))]
     public class TtsAudioPlayer : MonoBehaviour
     {
+        // Phase A6: raw-bytes queue entry (see .sisyphus/plans/hermes-migration.md §5).
+        private struct WavQueueEntry
+        {
+            public byte[] Wav;
+            public string Emotion;
+            public List<Hermes.Keyframe> Keyframes;
+        }
+
         private AudioSource _audioSource;
-        private readonly SortedList<int, TtsChunkData> _queue = new();
+        private readonly SortedList<int, WavQueueEntry> _queueBytes = new();
         private int _nextSequence;
         private bool _playing;
 
-        public event System.Action<TtsChunkData> OnChunkStarted;
+        public event System.Action<int, string, List<Hermes.Keyframe>> OnWavChunkStarted;
 
         void Awake()
         {
@@ -32,13 +41,21 @@ namespace DesktopMatePlus
         }
 
         /// <summary>
-        /// Enqueue a TTS chunk for playback. Chunks are sorted by sequence number.
+        /// Enqueue raw WAV bytes for playback (Phase A6 — see .sisyphus/plans/hermes-migration.md §5).
+        /// Non-base64 path fed by <c>IrodoriClient</c>: bytes are queued by sequence, decoded
+        /// lazily inside <see cref="PlayNext"/>, and played through the same <see cref="AudioSource"/>
+        /// path. Fires <see cref="OnWavChunkStarted"/> for emotion/keyframe subscribers.
         /// </summary>
-        public void EnqueueChunk(TtsChunkData chunk)
+        public void EnqueueWavBytes(int sequence, byte[] wav, string emotion, List<Hermes.Keyframe> keyframes)
         {
-            if (string.IsNullOrEmpty(chunk.audio_base64)) return;
+            if (wav == null || wav.Length == 0) return;
 
-            _queue[chunk.sequence] = chunk;
+            _queueBytes[sequence] = new WavQueueEntry
+            {
+                Wav = wav,
+                Emotion = emotion,
+                Keyframes = keyframes,
+            };
 
             if (!_playing)
                 PlayNext();
@@ -50,32 +67,35 @@ namespace DesktopMatePlus
         public void Reset()
         {
             _audioSource.Stop();
-            _queue.Clear();
+            _queueBytes.Clear();
             _nextSequence = 0;
             _playing = false;
         }
 
         private void PlayNext()
         {
-            if (!_queue.ContainsKey(_nextSequence)) return;
+            if (_queueBytes.ContainsKey(_nextSequence))
+            {
+                var entry = _queueBytes[_nextSequence];
+                _queueBytes.Remove(_nextSequence);
+                int seq = _nextSequence;
+                _nextSequence++;
 
-            var chunk = _queue[_nextSequence];
-            _queue.Remove(_nextSequence);
-            _nextSequence++;
+                var clip = DecodeWav(entry.Wav, $"tts_{seq}");
+                if (clip == null) { PlayNext(); return; }
 
-            var clip = DecodeWavBase64(chunk.audio_base64, $"tts_{chunk.sequence}");
-            if (clip == null) { PlayNext(); return; }
-
-            _audioSource.clip = clip;
-            _audioSource.Play();
-            _playing = true;
-            OnChunkStarted?.Invoke(chunk);
+                _audioSource.clip = clip;
+                _audioSource.Play();
+                _playing = true;
+                OnWavChunkStarted?.Invoke(seq, entry.Emotion, entry.Keyframes);
+                return;
+            }
         }
 
         /// <summary>
         /// Whether the player is currently playing or has queued chunks.
         /// </summary>
-        public bool IsPlaying => _playing || _queue.Count > 0;
+        public bool IsPlaying => _playing || _queueBytes.Count > 0;
 
         public void Pause()
         {
@@ -90,20 +110,6 @@ namespace DesktopMatePlus
         // =================================================================
         // WAV Decoder
         // =================================================================
-
-        private static AudioClip DecodeWavBase64(string base64, string clipName)
-        {
-            try
-            {
-                byte[] wav = Convert.FromBase64String(base64);
-                return DecodeWav(wav, clipName);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[DMP-TTS] Base64 decode error: {e.Message}");
-                return null;
-            }
-        }
 
         private static AudioClip DecodeWav(byte[] data, string clipName)
         {

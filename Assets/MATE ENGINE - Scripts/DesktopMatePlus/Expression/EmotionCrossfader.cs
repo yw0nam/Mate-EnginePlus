@@ -1,11 +1,12 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using HermesKeyframe = Hermes.Keyframe;
 
 namespace DesktopMatePlus
 {
     /// <summary>
-    /// Subscribes to TtsAudioPlayer.OnChunkStarted and crossfades UniversalBlendshapes
+    /// Subscribes to TtsAudioPlayer.OnWavChunkStarted and crossfades UniversalBlendshapes
     /// emotion fields (Joy / Angry / Sorrow / Fun / Neutral) toward the chunk's emotion.
     /// UniversalBlendshapes is pass-through, so this component is the canonical smoother.
     ///
@@ -21,7 +22,7 @@ namespace DesktopMatePlus
         [Tooltip("Auto-found if left empty: VRMLoader model first, then scene-wide.")]
         public UniversalBlendshapes blendshapes;
 
-        [Tooltip("Required. Fires OnChunkStarted when each TTS chunk begins playback.")]
+        [Tooltip("Required. Fires OnWavChunkStarted when each TTS chunk begins playback.")]
         public TtsAudioPlayer player;
 
         [Header("Crossfade")]
@@ -90,7 +91,7 @@ namespace DesktopMatePlus
         {
             if (_subscribed && player != null)
             {
-                player.OnChunkStarted -= HandleChunkStarted;
+                player.OnWavChunkStarted -= HandleChunkStarted;
                 _subscribed = false;
             }
         }
@@ -136,13 +137,13 @@ namespace DesktopMatePlus
         private void TrySubscribe()
         {
             if (_subscribed || player == null) return;
-            player.OnChunkStarted += HandleChunkStarted;
+            player.OnWavChunkStarted += HandleChunkStarted;
             _subscribed = true;
         }
 
-        private void HandleChunkStarted(TtsChunkData chunk)
+        private void HandleChunkStarted(int seq, string emotion, List<HermesKeyframe> keyframes)
         {
-            _targetField = MapEmotion(chunk?.emotion);
+            _targetField = MapEmotion(emotion);
             _lastChunkStartedTime = Time.time;
         }
 
