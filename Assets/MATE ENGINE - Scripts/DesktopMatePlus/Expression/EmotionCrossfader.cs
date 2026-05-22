@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using HermesKeyframe = Hermes.Keyframe;
 
 namespace DesktopMatePlus
 {
@@ -141,7 +140,7 @@ namespace DesktopMatePlus
             _subscribed = true;
         }
 
-        private void HandleChunkStarted(int seq, string emotion, List<HermesKeyframe> keyframes)
+        private void HandleChunkStarted(int seq, string emotion)
         {
             _targetField = MapEmotion(emotion);
             _lastChunkStartedTime = Time.time;

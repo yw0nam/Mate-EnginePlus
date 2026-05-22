@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Hermes;
 using UnityEngine;
 
 namespace DesktopMatePlus
@@ -16,7 +15,6 @@ namespace DesktopMatePlus
         {
             public byte[] Wav;
             public string Emotion;
-            public List<Hermes.Keyframe> Keyframes;
         }
 
         private AudioSource _audioSource;
@@ -24,7 +22,7 @@ namespace DesktopMatePlus
         private int _nextSequence;
         private bool _playing;
 
-        public event System.Action<int, string, List<Hermes.Keyframe>> OnWavChunkStarted;
+        public event System.Action<int, string> OnWavChunkStarted;
 
         void Awake()
         {
@@ -44,9 +42,9 @@ namespace DesktopMatePlus
         /// Enqueue raw WAV bytes for playback (Phase A6 — see .sisyphus/plans/hermes-migration.md §5).
         /// Non-base64 path fed by <c>IrodoriClient</c>: bytes are queued by sequence, decoded
         /// lazily inside <see cref="PlayNext"/>, and played through the same <see cref="AudioSource"/>
-        /// path. Fires <see cref="OnWavChunkStarted"/> for emotion/keyframe subscribers.
+        /// path. Fires <see cref="OnWavChunkStarted"/> for emotion subscribers.
         /// </summary>
-        public void EnqueueWavBytes(int sequence, byte[] wav, string emotion, List<Hermes.Keyframe> keyframes)
+        public void EnqueueWavBytes(int sequence, byte[] wav, string emotion)
         {
             if (wav == null || wav.Length == 0) return;
 
@@ -54,7 +52,6 @@ namespace DesktopMatePlus
             {
                 Wav = wav,
                 Emotion = emotion,
-                Keyframes = keyframes,
             };
 
             if (!_playing)
@@ -87,7 +84,7 @@ namespace DesktopMatePlus
                 _audioSource.clip = clip;
                 _audioSource.Play();
                 _playing = true;
-                OnWavChunkStarted?.Invoke(seq, entry.Emotion, entry.Keyframes);
+                OnWavChunkStarted?.Invoke(seq, entry.Emotion);
                 return;
             }
         }

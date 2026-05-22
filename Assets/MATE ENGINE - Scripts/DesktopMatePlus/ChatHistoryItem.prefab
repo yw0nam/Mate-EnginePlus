@@ -235,6 +235,8 @@ MonoBehaviour:
   chatText: {fileID: 5520253576631822032}
   timeText: {fileID: 7340848312908058854}
   speakerButtonObj: {fileID: 0}
+  charsPerSecond: 40
+  catchupThreshold: 80
 --- !u!1 &5446106959285848457
 GameObject:
   m_ObjectHideFlags: 0
@@ -595,7 +597,7 @@ MonoBehaviour:
       m_Calls: []
   m_text: Chat Text
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: e2a214f7adda62542976d59e2867416a, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: d0380afbc42730b4e9c5dd0fd549cd7d, type: 2}
   m_sharedMaterial: {fileID: -6483492587178873070, guid: e2a214f7adda62542976d59e2867416a, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
@@ -661,6 +663,6 @@ MonoBehaviour:
   m_margin: {x: 0, y: 0, z: 0, w: 0}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
-  m_hasFontAssetChanged: 0
+  m_hasFontAssetChanged: 1
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}

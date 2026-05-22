@@ -59,6 +59,17 @@ namespace Hermes
         public string EffectiveBaseUrl => irodoriBaseUrl;
 
         /// <summary>
+        /// Gets the root directory containing voice reference folders.
+        /// Each subfolder name is a voice id; each must contain merged_audio.mp3.
+        /// </summary>
+        public string VoicesRootPath => voicesRootPath;
+
+        /// <summary>
+        /// Gets the default voice id used when no specific voice is selected.
+        /// </summary>
+        public string DefaultVoiceId => defaultVoiceId;
+
+        /// <summary>
         /// Synthesizes speech through Irodori-TTS and returns raw WAV bytes, or null on failure.
         /// </summary>
         /// <param name="text">Text to synthesize.</param>

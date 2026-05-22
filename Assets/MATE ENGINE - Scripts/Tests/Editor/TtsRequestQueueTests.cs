@@ -21,11 +21,11 @@ namespace Hermes.Tests
 
             TtsRequestQueue queue = new TtsRequestQueue(fake);
             List<int> emitted = new List<int>();
-            queue.OnResult = (seq, wav, emotion, keyframes) => emitted.Add(seq);
+            queue.OnResult = (seq, wav, emotion) => emitted.Add(seq);
 
-            queue.Enqueue(0, "0", null, null, "voice");
-            queue.Enqueue(1, "1", null, null, "voice");
-            queue.Enqueue(2, "2", null, null, "voice");
+            queue.Enqueue(0, "0", null, "voice");
+            queue.Enqueue(1, "1", null, "voice");
+            queue.Enqueue(2, "2", null, "voice");
 
             await queue.WaitBarrierAsync(TimeSpan.FromSeconds(5));
 
@@ -38,10 +38,10 @@ namespace Hermes.Tests
             FakeIrodoriClient fake = new FakeIrodoriClient(TimeSpan.FromSeconds(60));
             TtsRequestQueue queue = new TtsRequestQueue(fake);
             List<byte[]> emitted = new List<byte[]>();
-            queue.OnResult = (seq, wav, emotion, keyframes) => emitted.Add(wav);
+            queue.OnResult = (seq, wav, emotion) => emitted.Add(wav);
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            queue.Enqueue(0, "0", null, null, "voice");
+            queue.Enqueue(0, "0", null, "voice");
             await queue.WaitBarrierAsync(TimeSpan.FromSeconds(1));
             stopwatch.Stop();
 
@@ -56,15 +56,15 @@ namespace Hermes.Tests
             FakeIrodoriClient fake = new FakeIrodoriClient(TimeSpan.FromMilliseconds(10));
             TtsRequestQueue queue = new TtsRequestQueue(fake);
             List<int> emitted = new List<int>();
-            queue.OnResult = (seq, wav, emotion, keyframes) => emitted.Add(seq);
+            queue.OnResult = (seq, wav, emotion) => emitted.Add(seq);
 
-            queue.Enqueue(0, "0", null, null, "voice");
-            queue.Enqueue(1, "1", null, null, "voice");
+            queue.Enqueue(0, "0", null, "voice");
+            queue.Enqueue(1, "1", null, "voice");
             await queue.WaitBarrierAsync(TimeSpan.FromSeconds(5));
             Assert.AreEqual(2, emitted.Count);
 
             queue.Reset();
-            queue.Enqueue(0, "0", null, null, "voice");
+            queue.Enqueue(0, "0", null, "voice");
             await queue.WaitBarrierAsync(TimeSpan.FromSeconds(5));
 
             Assert.AreEqual(3, emitted.Count);

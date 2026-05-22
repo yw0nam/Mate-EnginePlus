@@ -28,9 +28,9 @@ namespace Hermes
             _irodori = irodori ?? throw new ArgumentNullException(nameof(irodori));
         }
 
-        public Action<int, byte[], string, List<Keyframe>> OnResult { get; set; }
+        public Action<int, byte[], string> OnResult { get; set; }
 
-        public void Enqueue(int sequence, string text, string emotion, List<Keyframe> keyframes, string referenceId)
+        public void Enqueue(int sequence, string text, string emotion, string referenceId)
         {
             CancellationTokenSource cts = new CancellationTokenSource();
             PendingRequest pending = new PendingRequest { Cts = cts };
@@ -41,7 +41,7 @@ namespace Hermes
                 generation = _generation;
             }
 
-            pending.Task = SynthesizeOneAsync(sequence, text, emotion, keyframes, referenceId, cts, pending, generation);
+            pending.Task = SynthesizeOneAsync(sequence, text, emotion, referenceId, cts, pending, generation);
 
             lock (_lock)
             {
@@ -118,7 +118,6 @@ namespace Hermes
             int sequence,
             string text,
             string emotion,
-            List<Keyframe> keyframes,
             string referenceId,
             CancellationTokenSource cts,
             PendingRequest pending,
@@ -148,10 +147,10 @@ namespace Hermes
                 cts.Dispose();
             }
 
-            StoreAndDrain(sequence, wav, emotion, keyframes, generation);
+            StoreAndDrain(sequence, wav, emotion, generation);
         }
 
-        private void StoreAndDrain(int sequence, byte[] wav, string emotion, List<Keyframe> keyframes, int generation)
+        private void StoreAndDrain(int sequence, byte[] wav, string emotion, int generation)
         {
             List<Emission> emissions = new List<Emission>();
             lock (_lock)
@@ -165,7 +164,6 @@ namespace Hermes
                 {
                     Wav = wav,
                     Emotion = emotion,
-                    Keyframes = keyframes,
                 };
 
                 while (_completed.TryGetValue(_nextSeqToEmit, out TtsResult result))
@@ -176,7 +174,6 @@ namespace Hermes
                         Sequence = _nextSeqToEmit,
                         Wav = result.Wav,
                         Emotion = result.Emotion,
-                        Keyframes = result.Keyframes,
                     });
                     _nextSeqToEmit++;
                 }
@@ -185,7 +182,7 @@ namespace Hermes
             for (int i = 0; i < emissions.Count; i++)
             {
                 Emission emission = emissions[i];
-                OnResult?.Invoke(emission.Sequence, emission.Wav, emission.Emotion, emission.Keyframes);
+                OnResult?.Invoke(emission.Sequence, emission.Wav, emission.Emotion);
             }
         }
 
@@ -235,7 +232,6 @@ namespace Hermes
         {
             public byte[] Wav;
             public string Emotion;
-            public List<Keyframe> Keyframes;
         }
 
         private struct Emission
@@ -243,7 +239,6 @@ namespace Hermes
             public int Sequence;
             public byte[] Wav;
             public string Emotion;
-            public List<Keyframe> Keyframes;
         }
     }
 }

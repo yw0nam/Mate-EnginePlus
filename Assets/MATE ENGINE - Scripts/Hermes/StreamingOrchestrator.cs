@@ -23,11 +23,17 @@ namespace Hermes
         [SerializeField] private FastBunkaiSidecarClient sidecarClient;
 
         [Header("Processing")]
-        [SerializeField] private EmotionMapper emotionMapper;
         [SerializeField] private Component ttsAudioPlayer;
         [SerializeField] private string referenceVoiceId = "七海";
         [SerializeField] private int sentenceMinChunkLength = 50;
         [SerializeField] private float ttsBarrierTimeoutSeconds = 30f;
+
+        /// <summary>
+        /// Runtime voice id. When set by VoiceCatalogHandler (or any UI), this
+        /// overrides the Inspector default for all subsequent TTS requests.
+        /// Falls back to <see cref="referenceVoiceId"/> when null or empty.
+        /// </summary>
+        public string CurrentVoiceId { get; set; }
 
         private SentenceChunker _chunker;
         private TtsRequestQueue _ttsQueue;
@@ -48,6 +54,8 @@ namespace Hermes
         private void Awake()
         {
             EnsureComposed();
+            if (string.IsNullOrEmpty(CurrentVoiceId))
+                CurrentVoiceId = referenceVoiceId;
         }
 
         public async Task SendAsync(
@@ -91,11 +99,6 @@ namespace Hermes
             if (sidecarClient == null)
             {
                 sidecarClient = new FastBunkaiSidecarClient();
-            }
-
-            if (emotionMapper == null)
-            {
-                emotionMapper = new EmotionMapper();
             }
 
             if (_chunker == null)
@@ -207,22 +210,21 @@ namespace Hermes
                 return;
             }
 
-            List<Keyframe> keyframes = emotionMapper.Map(processed.emotion);
-            _ttsQueue.Enqueue(_nextSequence++, processed.clean, processed.emotion, keyframes, referenceVoiceId);
+            _ttsQueue.Enqueue(_nextSequence++, processed.clean, processed.emotion, !string.IsNullOrEmpty(CurrentVoiceId) ? CurrentVoiceId : referenceVoiceId);
         }
 
-        private void HandleTtsResult(int seq, byte[] wav, string emotion, List<Keyframe> keyframes)
+        private void HandleTtsResult(int seq, byte[] wav, string emotion)
         {
             if (wav != null && wav.Length > 0)
             {
-                EnqueueWavBytes(seq, wav, emotion, keyframes);
+                EnqueueWavBytes(seq, wav, emotion);
                 return;
             }
 
             Debug.LogWarning($"[Orchestrator] TTS synthesis returned null/empty for seq={seq}");
         }
 
-        private void EnqueueWavBytes(int seq, byte[] wav, string emotion, List<Keyframe> keyframes)
+        private void EnqueueWavBytes(int seq, byte[] wav, string emotion)
         {
             if (ttsAudioPlayer == null)
             {
@@ -231,14 +233,14 @@ namespace Hermes
 
             MethodInfo method = ttsAudioPlayer.GetType().GetMethod(
                 "EnqueueWavBytes",
-                new[] { typeof(int), typeof(byte[]), typeof(string), typeof(List<Keyframe>) });
+                new[] { typeof(int), typeof(byte[]), typeof(string) });
             if (method == null)
             {
-                Debug.LogWarning("[Orchestrator] Assigned TTS audio player does not expose EnqueueWavBytes(int, byte[], string, List<Keyframe>).");
+                Debug.LogWarning("[Orchestrator] Assigned TTS audio player does not expose EnqueueWavBytes(int, byte[], string).");
                 return;
             }
 
-            method.Invoke(ttsAudioPlayer, new object[] { seq, wav, emotion, keyframes });
+            method.Invoke(ttsAudioPlayer, new object[] { seq, wav, emotion });
         }
     }
 }
