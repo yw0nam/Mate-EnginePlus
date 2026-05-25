@@ -1,0 +1,91 @@
+# Normalize line endings across platforms (Mac/Windows/Linux devs share this repo).
+# Without this, Unity re-serializes shaders/scenes/prefabs/etc. with the local
+# platform's EOL on every editor open, producing huge cross-platform diff noise.
+
+# Default: auto-detect text, store as LF in the repo.
+* text=auto eol=lf
+
+# C# / scripting
+*.cs        text eol=lf diff=csharp
+*.shader    text eol=lf
+*.cginc     text eol=lf
+*.hlsl      text eol=lf
+*.compute   text eol=lf
+*.json      text eol=lf
+*.xml       text eol=lf
+*.txt       text eol=lf
+*.md        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+
+# Unity YAML asset formats — always LF (Unity itself writes LF on disk, but
+# git on Windows would otherwise CRLF them on checkout).
+*.unity     text eol=lf
+*.prefab    text eol=lf
+*.asset     text eol=lf
+*.mat       text eol=lf
+*.anim      text eol=lf
+*.controller text eol=lf
+*.meta      text eol=lf
+*.asmdef    text eol=lf
+*.asmref    text eol=lf
+*.physicsMaterial2D text eol=lf
+*.physicMaterial text eol=lf
+*.guiskin   text eol=lf
+*.fontsettings text eol=lf
+*.flare     text eol=lf
+*.giparams  text eol=lf
+*.preset    text eol=lf
+*.lighting  text eol=lf
+*.spriteatlas text eol=lf
+*.terrainlayer text eol=lf
+*.signal    text eol=lf
+*.playable  text eol=lf
+*.mixer     text eol=lf
+*.mask      text eol=lf
+*.brush     text eol=lf
+
+# Treat as binary so git doesn't try to diff/merge.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.bmp       binary
+*.tga       binary
+*.psd       binary
+*.exr       binary
+*.hdr       binary
+*.ico       binary
+*.icns      binary
+*.fbx       binary
+*.obj       binary
+*.dae       binary
+*.3ds       binary
+*.blend     binary
+*.max       binary
+*.ma        binary
+*.mb        binary
+*.vrm       binary
+*.glb       binary
+*.gltf      binary
+*.wav       binary
+*.mp3       binary
+*.ogg       binary
+*.aif       binary
+*.flac      binary
+*.mp4       binary
+*.mov       binary
+*.webm      binary
+*.dll       binary
+*.dylib     binary
+*.so        binary
+*.bundle    binary
+*.lib       binary
+*.pdb       binary
+*.unitypackage binary
+*.gguf      binary
+*.ttf       binary
+*.otf       binary
+
+# LFS candidates (if/when Git LFS is enabled, switch these to `filter=lfs`).
+# Listed here as a reminder of large-binary categories that bloat the repo.
