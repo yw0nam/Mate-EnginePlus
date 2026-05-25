@@ -49,6 +49,9 @@ public class SettingsMenuPosition : MonoBehaviour
 
     void Start()
     {
+#if !UNITY_STANDALONE_WIN
+        return; // user32.dll EnumDisplayMonitors / GetWindowRect unavailable; leaves unityHWND=Zero so Update auto-returns.
+#endif
         unityHWND = Process.GetCurrentProcess().MainWindowHandle;
         enumProc = EnumProc;
         RefreshMonitors();

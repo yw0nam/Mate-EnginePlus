@@ -489,7 +489,9 @@ public class AvatarHideHandler : MonoBehaviour
 
     void SetTopMost(bool on)
     {
+#if UNITY_STANDALONE_WIN
         SetWindowPos(unityHWND, on ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+#endif
     }
 
     delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
