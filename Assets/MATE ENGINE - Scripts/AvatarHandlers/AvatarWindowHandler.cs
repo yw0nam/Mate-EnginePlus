@@ -114,8 +114,12 @@ public class AvatarWindowHandler : MonoBehaviour
     int _lastSnapTopY;
     uint _currentPid;
     float _guardRadiusSq;
+    private static readonly bool IsWindows =
+        Application.platform == RuntimePlatform.WindowsEditor ||
+        Application.platform == RuntimePlatform.WindowsPlayer;
     void Start()
     {
+        if (!IsWindows) return;
         unityHWND = Process.GetCurrentProcess().MainWindowHandle;
         _currentPid = GetCurrentProcessId();
         animator = GetComponent<Animator>();
@@ -166,9 +170,7 @@ public class AvatarWindowHandler : MonoBehaviour
     }
     void Update()
     {
-#if !UNITY_STANDALONE_WIN
-        return;
-#endif
+        if (!IsWindows) return;
         if (snappedHWND != IntPtr.Zero)
         {
             if ((transform.lossyScale - _prevLossyScale).sqrMagnitude > 1e-8f) { _snapSmoothingActive = false; _snapVelX = _snapVelY = 0f; }

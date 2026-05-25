@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Concurrent;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 using OpenAI;
 using OpenAI.Responses;
 using UnityEngine;
+using Utilities.Async;
 using Utilities.WebRequestRest.Interfaces;
 
 namespace Hermes
@@ -138,7 +141,7 @@ namespace Hermes
             try
             {
                 var request = CreateRequest(userText);
-                Debug.Log($"[Hermes] Request JSON: {Newtonsoft.Json.JsonConvert.SerializeObject(request)}");
+                LogWireTrace("Streaming", "before-await", request);
                 var streamState = new StreamingState();
                 Func<string, IServerSentEvent, Task> handler = (eventType, sseEvent) =>
                 {
@@ -164,6 +167,7 @@ namespace Hermes
                     .CreateModelResponseAsync(request, handler, ct)
                     .ConfigureAwait(false);
 
+                LogWireTrace("Streaming", "after-await", null);
                 Debug.Log($"[Hermes] Response RAW: {Newtonsoft.Json.JsonConvert.SerializeObject(response)}");
                 Debug.Log($"[Hermes] Response.Id={response?.Id}, Status={response?.Status}, Output.Count={response?.Output?.Count}");
 
@@ -208,12 +212,13 @@ namespace Hermes
             try
             {
                 var request = CreateRequest(userText);
-                Debug.Log($"[Hermes] Request JSON: {Newtonsoft.Json.JsonConvert.SerializeObject(request)}");
+                LogWireTrace("NonStreaming", "before-await", request);
 
                 var response = await _client.ResponsesEndpoint
                     .CreateModelResponseAsync(request, (Func<string, IServerSentEvent, Task>)null, ct)
                     .ConfigureAwait(false);
 
+                LogWireTrace("NonStreaming", "after-await", null);
                 Debug.Log($"[Hermes] Response RAW: {Newtonsoft.Json.JsonConvert.SerializeObject(response)}");
                 Debug.Log($"[Hermes] Response.Id={response?.Id}, Status={response?.Status}, Output.Count={response?.Output?.Count}");
 
@@ -243,6 +248,54 @@ namespace Hermes
         public void Reset()
         {
             LastResponseId = null;
+        }
+
+        private static JsonSerializerSettings _sdkSerializerSettings;
+
+        private static JsonSerializerSettings GetSdkSerializerSettings()
+        {
+            if (_sdkSerializerSettings != null) return _sdkSerializerSettings;
+            try
+            {
+                var prop = typeof(OpenAIClient).GetProperty(
+                    "JsonSerializationOptions",
+                    BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+                _sdkSerializerSettings = prop?.GetValue(null) as JsonSerializerSettings;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Hermes-Trace] reflection for JsonSerializationOptions failed: {e.Message}");
+            }
+            return _sdkSerializerSettings;
+        }
+
+        private void LogWireTrace(string flow, string phase, object request)
+        {
+            try
+            {
+                var tid = Thread.CurrentThread.ManagedThreadId;
+                var isMain = SyncContextUtility.IsMainThread;
+                var unityTid = SyncContextUtility.UnityThreadId;
+                var hasSyncCtx = SynchronizationContext.Current != null;
+                var ctxType = SynchronizationContext.Current?.GetType().Name ?? "<null>";
+                var isPlaying = isMain ? Application.isPlaying.ToString() : "<off-main>";
+                Debug.Log(
+                    $"[Hermes-Trace] flow={flow} phase={phase} tid={tid} unityTid={unityTid} " +
+                    $"isMain={isMain} syncCtx={ctxType} hasSyncCtx={hasSyncCtx} isPlaying={isPlaying}");
+
+                if (request != null)
+                {
+                    var sdkSettings = GetSdkSerializerSettings();
+                    var realPayload = sdkSettings != null
+                        ? JsonConvert.SerializeObject(request, sdkSettings)
+                        : JsonConvert.SerializeObject(request);
+                    Debug.Log($"[Hermes-Trace] {flow} real-wire JSON: {realPayload}");
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Hermes-Trace] LogWireTrace failed: {e}");
+            }
         }
 
         private void InitializeClient()

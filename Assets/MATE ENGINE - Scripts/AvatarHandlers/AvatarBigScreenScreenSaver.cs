@@ -33,6 +33,10 @@ public class AvatarBigScreenScreenSaver : MonoBehaviour
     private Vector2 lastMousePos;
     private float idleTimer = 0f;
 
+    private static readonly bool IsWindows =
+        Application.platform == RuntimePlatform.WindowsEditor ||
+        Application.platform == RuntimePlatform.WindowsPlayer;
+
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out POINT lpPoint);
 
@@ -48,6 +52,7 @@ public class AvatarBigScreenScreenSaver : MonoBehaviour
 
     void Start()
     {
+        if (!IsWindows) return;
         bigScreenHandler = GetComponent<AvatarBigScreenHandler>();
         avatarAnimator = GetComponent<Animator>();
         lastMousePos = GetGlobalMousePosition();
@@ -57,6 +62,7 @@ public class AvatarBigScreenScreenSaver : MonoBehaviour
 
     void Update()
     {
+        if (!IsWindows) return;
         LoadSettings();
 
         if (MenuActions.IsAnyMenuOpen())
