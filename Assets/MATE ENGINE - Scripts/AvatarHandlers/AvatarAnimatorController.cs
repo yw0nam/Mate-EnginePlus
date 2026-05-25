@@ -1,5 +1,7 @@
 ﻿using UnityEngine;
+#if UNITY_STANDALONE_WIN
 using NAudio.CoreAudioApi;
+#endif
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Collections;
@@ -28,8 +30,10 @@ public class AvatarAnimatorController : MonoBehaviour
     private static readonly int isDancingParam = Animator.StringToHash("isDancing");
     private static readonly int idleIndexParam = Animator.StringToHash("IdleIndex");
 
+#if UNITY_STANDALONE_WIN
     private MMDevice defaultDevice;
     private MMDeviceEnumerator enumerator;
+#endif
     private Coroutine soundCheckCoroutine, idleTransitionCoroutine, danceTransitionCoroutine;
     private float lastSoundCheckTime, idleTimer, danceTimer;
     private int idleState, danceState;
@@ -47,8 +51,10 @@ public class AvatarAnimatorController : MonoBehaviour
     {
         animator ??= GetComponent<Animator>();
         Application.runInBackground = true;
+#if UNITY_STANDALONE_WIN
         enumerator = new MMDeviceEnumerator();
         defaultDevice = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+#endif
 
         animator.SetFloat(isFemaleParam, enableHusbandoMode ? 0f : 1f);
         animator.SetFloat(isMaleParam, enableHusbandoMode ? 1f : 0f);
@@ -73,6 +79,7 @@ public class AvatarAnimatorController : MonoBehaviour
             if (isDancing) SetDancing(false);
             return;
         }
+#if UNITY_STANDALONE_WIN
         if (defaultDevice == null) return;
         if (!isDragging)
         {
@@ -80,6 +87,7 @@ public class AvatarAnimatorController : MonoBehaviour
             if (valid && !isDancing) StartDancing();
             else if (!valid && isDancing) SetDancing(false);
         }
+#endif
     }
 
     void StartDancing()
@@ -101,6 +109,7 @@ public class AvatarAnimatorController : MonoBehaviour
         }
     }
 
+#if UNITY_STANDALONE_WIN
     bool IsValidAppPlaying()
     {
         if (Time.time - lastSoundCheckTime < 2f) return isDancing;
@@ -131,6 +140,7 @@ public class AvatarAnimatorController : MonoBehaviour
         catch { defaultDevice?.Dispose(); defaultDevice = null; }
         return false;
     }
+#endif
 
     void Update()
     {
@@ -237,7 +247,9 @@ public class AvatarAnimatorController : MonoBehaviour
         if (soundCheckCoroutine != null) { StopCoroutine(soundCheckCoroutine); soundCheckCoroutine = null; }
         if (idleTransitionCoroutine != null) { StopCoroutine(idleTransitionCoroutine); idleTransitionCoroutine = null; }
         if (danceTransitionCoroutine != null) { StopCoroutine(danceTransitionCoroutine); danceTransitionCoroutine = null; }
+#if UNITY_STANDALONE_WIN
         defaultDevice?.Dispose(); defaultDevice = null;
         enumerator?.Dispose(); enumerator = null;
+#endif
     }
 }
