@@ -945,7 +945,6 @@ public class AvatarWindowHandler : MonoBehaviour
         return false;
     }
 
-#if UNITY_STANDALONE_WIN
     [DllImport("kernel32.dll")] static extern uint GetCurrentProcessId();
     [DllImport("user32.dll")] static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
     [StructLayout(LayoutKind.Sequential)]
@@ -991,5 +990,4 @@ public class AvatarWindowHandler : MonoBehaviour
     const uint SWP_NOMOVE = 0x0002;
     const uint SWP_NOSIZE = 0x0001;
     const uint SWP_NOACTIVATE = 0x0010;
-#endif
 }
