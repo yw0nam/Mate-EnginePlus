@@ -1,6 +1,6 @@
 {
-    "name": "Hermes",
-    "rootNamespace": "Hermes",
+    "name": "OpenaiCompatibleAgent.Backend",
+    "rootNamespace": "OpenaiCompatibleAgent",
     "references": [
         "Unity.Nuget.Newtonsoft.Json",
         "OpenAI",
