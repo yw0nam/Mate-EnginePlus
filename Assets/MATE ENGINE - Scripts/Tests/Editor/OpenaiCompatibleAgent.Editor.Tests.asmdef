@@ -1,5 +1,5 @@
 {
-    "name": "Hermes.Editor.Tests",
+    "name": "OpenaiCompatibleAgent.Editor.Tests",
     "rootNamespace": "OpenaiCompatibleAgent.Tests",
     "references": [
         "UnityEngine.TestRunner",
