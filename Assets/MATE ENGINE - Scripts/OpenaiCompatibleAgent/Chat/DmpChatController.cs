@@ -331,7 +331,7 @@ namespace OpenaiCompatibleAgent
 
         private void ScrollToBottom()
         {
-            if (chatScrollRect != null)
+            if (chatScrollRect != null && isActiveAndEnabled)
                 StartCoroutine(ScrollToBottomNextFrame());
         }
 

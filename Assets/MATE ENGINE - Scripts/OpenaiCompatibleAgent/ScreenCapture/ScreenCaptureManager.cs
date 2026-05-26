@@ -8,7 +8,8 @@ namespace OpenaiCompatibleAgent
 {
     public static class ScreenCaptureManager
     {
-        // ── P/Invoke 선언 ──────────────────────────────────────────────
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        // ── Win32 P/Invoke ────────────────────────────────────────────
 
         // RECT는 ScreenCaptureSource.cs에서 namespace 레벨로 선언됨 — 여기서 재선언 불필요
 
@@ -62,12 +63,74 @@ namespace OpenaiCompatibleAgent
         const uint GA_ROOTOWNER    = 3;
         const uint SW_SHOWMINIMIZED = 2;
         const uint PW_RENDERFULLCONTENT = 0x00000002;
+#endif
+
+#if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+        // ── macOS native plugin (Plugins~/MateScreenCapture) ──────────
+        // 빌드: Mate-Engine/Plugins~/MateScreenCapture/build.sh
+        // 산출물: Assets/Plugins/macOS/MateScreenCapture.bundle
+
+        const string MAC_LIB = "MateScreenCapture";
+
+        [DllImport(MAC_LIB)] static extern IntPtr mate_capture_list_displays();
+        [DllImport(MAC_LIB)] static extern IntPtr mate_capture_list_windows();
+        [DllImport(MAC_LIB)] static extern void   mate_capture_free_string(IntPtr p);
+        [DllImport(MAC_LIB)] static extern int    mate_capture_display_png(uint displayId, out IntPtr buf);
+        [DllImport(MAC_LIB)] static extern int    mate_capture_window_png(uint windowId, out IntPtr buf);
+        [DllImport(MAC_LIB)] static extern void   mate_capture_free_bytes(IntPtr p);
+
+        [Serializable]
+        class MacItem
+        {
+            public uint id;
+            public int width;
+            public int height;
+            public string title;
+        }
+
+        [Serializable]
+        class MacItemList
+        {
+            public MacItem[] items;
+        }
+
+        static MacItem[] CallListNative(Func<IntPtr> fn, string label)
+        {
+            IntPtr p = IntPtr.Zero;
+            try { p = fn(); }
+            catch (DllNotFoundException)
+            {
+                Debug.LogError($"[DMP-Capture] {MAC_LIB}.bundle not found. " +
+                               "Build it via Mate-Engine/Plugins~/MateScreenCapture/build.sh");
+                return Array.Empty<MacItem>();
+            }
+            if (p == IntPtr.Zero) return Array.Empty<MacItem>();
+            try
+            {
+                string json = Marshal.PtrToStringUTF8(p) ?? "{\"items\":[]}";
+                var list = JsonUtility.FromJson<MacItemList>(json);
+                return list?.items ?? Array.Empty<MacItem>();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[DMP-Capture] {label} JSON parse failed: {e.Message}");
+                return Array.Empty<MacItem>();
+            }
+            finally
+            {
+                mate_capture_free_string(p);
+            }
+        }
+
+#endif
 
         // ── 모니터 열거 ────────────────────────────────────────────────
 
         public static List<ScreenCaptureSource> EnumerateMonitors()
         {
             var result = new List<ScreenCaptureSource>();
+
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
             int index = 0;
 
             bool Callback(IntPtr hMon, IntPtr hdcMon, ref RECT rect, IntPtr dwData)
@@ -91,14 +154,30 @@ namespace OpenaiCompatibleAgent
             }
 
             EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, Callback, IntPtr.Zero);
+#elif UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+            var items = CallListNative(mate_capture_list_displays, "displays");
+            for (int i = 0; i < items.Length; i++)
+            {
+                var d = items[i];
+                result.Add(new ScreenCaptureSource
+                {
+                    Type = CaptureType.Monitor,
+                    MonitorIndex = (int)d.id, // macOS: stash CGDirectDisplayID here
+                    MonitorRect = new RECT { left = 0, top = 0, right = d.width, bottom = d.height },
+                    DisplayName = $"Monitor {i + 1} ({d.width}×{d.height})"
+                });
+            }
+#endif
             return result;
         }
 
-        // ── 창 열거 (IsAltTabWindow 패턴) ─────────────────────────────
+        // ── 창 열거 ───────────────────────────────────────────────────
 
         public static List<ScreenCaptureSource> EnumerateWindows()
         {
             var result = new List<ScreenCaptureSource>();
+
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
             EnumWindows((hWnd, lParam) =>
             {
                 if (!IsAltTabWindow(hWnd)) return true;
@@ -112,9 +191,22 @@ namespace OpenaiCompatibleAgent
                 });
                 return true;
             }, IntPtr.Zero);
+#elif UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+            var items = CallListNative(mate_capture_list_windows, "windows");
+            foreach (var w in items)
+            {
+                result.Add(new ScreenCaptureSource
+                {
+                    Type = CaptureType.Window,
+                    WindowHandle = new IntPtr((long)w.id), // macOS: stash CGWindowID here
+                    DisplayName = string.IsNullOrEmpty(w.title) ? $"Window {w.id}" : w.title
+                });
+            }
+#endif
             return result;
         }
 
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
         static bool IsAltTabWindow(IntPtr hWnd)
         {
             if (!IsWindowVisible(hWnd)) return false;
@@ -136,27 +228,36 @@ namespace OpenaiCompatibleAgent
 
             return true;
         }
+#endif
 
         // ── 캡처 ──────────────────────────────────────────────────────
 
         /// <summary>
-        /// 백그라운드 STA 스레드에서 캡처 후 메인 스레드에서 Texture2D 반환.
+        /// 백그라운드 스레드에서 캡처 후 메인 스레드에서 Texture2D 반환.
         /// 실패 시 null 반환.
         /// </summary>
         public static async Awaitable<Texture2D> CaptureAsync(ScreenCaptureSource src)
         {
-            byte[] rawPng = null;
+            if (src == null) return null;
 
-            // GDI 캡처는 STA 스레드에서 실행
             var tcs = new System.Threading.Tasks.TaskCompletionSource<byte[]>();
             var thread = new System.Threading.Thread(() =>
             {
                 try
                 {
-                    rawPng = src.Type == CaptureType.Monitor
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+                    byte[] png = src.Type == CaptureType.Monitor
                         ? CaptureMonitor(src.MonitorRect)
                         : CaptureWindow(src.WindowHandle);
-                    tcs.SetResult(rawPng);
+                    tcs.SetResult(png);
+#elif UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+                    byte[] png = src.Type == CaptureType.Monitor
+                        ? MacCapture((uint)src.MonitorIndex, isDisplay: true)
+                        : MacCapture((uint)src.WindowHandle.ToInt64(), isDisplay: false);
+                    tcs.SetResult(png);
+#else
+                    tcs.SetResult(null);
+#endif
                 }
                 catch (Exception e)
                 {
@@ -164,7 +265,10 @@ namespace OpenaiCompatibleAgent
                     tcs.SetResult(null);
                 }
             });
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+            // GDI 캡처는 STA 스레드 필요
             thread.SetApartmentState(System.Threading.ApartmentState.STA);
+#endif
             thread.Start();
 
             byte[] bytes = await tcs.Task;
@@ -177,6 +281,7 @@ namespace OpenaiCompatibleAgent
             return tex;
         }
 
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
         static byte[] CaptureMonitor(RECT rect)
         {
             // DPI 보정: GetDeviceCaps로 배율 확인
@@ -230,6 +335,45 @@ namespace OpenaiCompatibleAgent
 
             return result;
         }
+#endif
+
+#if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+        static byte[] MacCapture(uint id, bool isDisplay)
+        {
+            IntPtr buf;
+            int len;
+            try
+            {
+                len = isDisplay
+                    ? mate_capture_display_png(id, out buf)
+                    : mate_capture_window_png(id, out buf);
+            }
+            catch (DllNotFoundException)
+            {
+                Debug.LogError($"[DMP-Capture] {MAC_LIB}.bundle not found. " +
+                               "Build it via Mate-Engine/Plugins~/MateScreenCapture/build.sh");
+                return null;
+            }
+
+            if (len <= 0 || buf == IntPtr.Zero)
+            {
+                Debug.LogWarning("[DMP-Capture] macOS 캡처 실패 — Screen Recording 권한을 확인하세요 " +
+                                 "(System Settings → Privacy & Security → Screen Recording)");
+                return null;
+            }
+
+            try
+            {
+                var bytes = new byte[len];
+                Marshal.Copy(buf, bytes, 0, len);
+                return bytes;
+            }
+            finally
+            {
+                mate_capture_free_bytes(buf);
+            }
+        }
+#endif
 
         // ── Base64 인코딩 ──────────────────────────────────────────────
 

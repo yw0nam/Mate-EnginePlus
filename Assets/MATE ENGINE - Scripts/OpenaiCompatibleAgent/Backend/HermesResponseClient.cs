@@ -208,6 +208,19 @@ namespace OpenaiCompatibleAgent
             {
                 QueueError("Request cancelled.");
             }
+            catch (Newtonsoft.Json.JsonException e) when (tokenDeltaQueued)
+            {
+                // Hermes-agent sometimes returns function_call_output.output as
+                // an array of input_text parts, but the OpenAI SDK's
+                // ResponseItemConverter expects a flat string. The streamed
+                // text deltas already reached the UI, so treat the post-stream
+                // poll failure as completion instead of a hard error.
+                Debug.LogWarning($"[Hermes] Stream completed but post-stream poll JSON parse failed: {e.Message}");
+                if (!completionQueued)
+                {
+                    EnqueueMainThread(() => onComplete?.Invoke());
+                }
+            }
             catch (Exception e)
             {
                 Debug.LogError($"[Hermes] SendAsync failed: {e}");
