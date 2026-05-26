@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace DesktopMatePlus
+namespace OpenaiCompatibleAgent
 {
     /// <summary>
     /// Decodes WAV bytes and plays them in sequence order.

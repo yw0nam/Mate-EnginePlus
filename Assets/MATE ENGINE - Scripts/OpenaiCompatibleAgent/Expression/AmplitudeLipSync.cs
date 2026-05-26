@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace DesktopMatePlus
+namespace OpenaiCompatibleAgent
 {
     /// <summary>
     /// Reads AudioSource output amplitude every frame and drives UniversalBlendshapes.A

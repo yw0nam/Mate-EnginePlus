@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Hermes
+namespace OpenaiCompatibleAgent
 {
     /// <summary>
     /// Buffers streaming text deltas and emits complete sentence chunks using fast-bunkai positions.

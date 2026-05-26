@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
-namespace Hermes
+namespace OpenaiCompatibleAgent
 {
     /// <summary>
     /// Cleans TTS-bound sentence text by removing *action* and [meta] blocks,

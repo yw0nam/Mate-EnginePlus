@@ -4,8 +4,9 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+using Utilities.Async;
 
-namespace Hermes
+namespace OpenaiCompatibleAgent
 {
     /// <summary>
     /// Coordinates Hermes streaming text, sentence chunking, emotion mapping, Irodori TTS, and audio playback.
@@ -58,8 +59,23 @@ namespace Hermes
                 CurrentVoiceId = referenceVoiceId;
         }
 
+        public Task SendAsync(
+            string userText,
+            Action<string> onTokenDelta,
+            Action onTurnComplete,
+            Action<string> onError,
+            CancellationToken ct = default)
+        {
+            return SendAsync(userText, null, onTokenDelta, onTurnComplete, onError, ct);
+        }
+
+        /// <summary>
+        /// Multimodal overload: forwards <paramref name="imageDataUrls"/> as
+        /// <c>input_image</c> content items to <see cref="HermesResponseClient.SendAsync"/>.
+        /// </summary>
         public async Task SendAsync(
             string userText,
+            IReadOnlyList<string> imageDataUrls,
             Action<string> onTokenDelta,
             Action onTurnComplete,
             Action<string> onError,
@@ -78,19 +94,22 @@ namespace Hermes
 
                 using (ct.Register(() => _turnTcs.TrySetCanceled()))
                 {
-                    await hermesClient.SendAsync(userText, HandleTokenDelta, HandleStreamComplete, HandleStreamError, ct);
+                    await hermesClient.SendAsync(userText, imageDataUrls, HandleTokenDelta, HandleStreamComplete, HandleStreamError, ct);
                     await _turnTcs.Task;
                 }
             }
             catch (OperationCanceledException)
             {
                 _ttsQueue?.Reset();
-                onError?.Invoke("Request cancelled.");
+                var cb = onError;
+                SyncContextUtility.RunOnUnityThread(() => cb?.Invoke("Request cancelled."));
             }
             catch (Exception ex)
             {
                 _ttsQueue?.Reset();
-                onError?.Invoke(ex.Message);
+                var cb = onError;
+                var msg = ex.Message;
+                SyncContextUtility.RunOnUnityThread(() => cb?.Invoke(msg));
             }
         }
 
@@ -186,8 +205,37 @@ namespace Hermes
                 }
 
                 await _ttsQueue.WaitBarrierAsync(TimeSpan.FromSeconds(ttsBarrierTimeoutSeconds));
-                _onTurnComplete?.Invoke();
-                _turnTcs?.TrySetResult(true);
+
+                // After the TTS barrier the await typically resumes on a worker
+                // thread (HttpClient + Task.Delay continuations). Unity API calls
+                // inside _onTurnComplete (SetTalking, ShowThinking, SetInputInteractable)
+                // would either silently fail or throw off-main-thread, leaving
+                // DmpChatController._isStreaming stuck at true forever. Marshal
+                // back to Unity's main thread before invoking the callback.
+                Debug.Log(string.Format(
+                    "[Orchestrator] phase=after-barrier tid={0} unityTid={1} isMain={2} hasSyncCtx={3}",
+                    Thread.CurrentThread.ManagedThreadId,
+                    SyncContextUtility.UnityThreadId,
+                    SyncContextUtility.IsMainThread,
+                    SynchronizationContext.Current != null));
+
+                var completeCallback = _onTurnComplete;
+                var tcs = _turnTcs;
+                SyncContextUtility.RunOnUnityThread(() =>
+                {
+                    try
+                    {
+                        completeCallback?.Invoke();
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogError($"[Orchestrator] onTurnComplete threw: {ex}");
+                    }
+                    finally
+                    {
+                        tcs?.TrySetResult(true);
+                    }
+                });
             }
             catch (Exception ex)
             {
@@ -198,8 +246,26 @@ namespace Hermes
         private void HandleStreamError(string message)
         {
             _ttsQueue?.Reset();
-            _onError?.Invoke(message);
-            _turnTcs?.TrySetException(new InvalidOperationException(message));
+
+            // Same main-thread marshaling rationale as HandleStreamComplete:
+            // when invoked from an awaited continuation it may run off-main.
+            var errorCallback = _onError;
+            var tcs = _turnTcs;
+            SyncContextUtility.RunOnUnityThread(() =>
+            {
+                try
+                {
+                    errorCallback?.Invoke(message);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[Orchestrator] onError threw: {ex}");
+                }
+                finally
+                {
+                    tcs?.TrySetException(new InvalidOperationException(message));
+                }
+            });
         }
 
         private void EnqueueSentence(string sentence)

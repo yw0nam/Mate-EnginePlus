@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-namespace DesktopMatePlus
+namespace OpenaiCompatibleAgent
 {
     /// <summary>
     /// Per-session-slot UI handler. Attach to the SessionItem template.

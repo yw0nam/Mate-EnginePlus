@@ -4,7 +4,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace DesktopMatePlus
+namespace OpenaiCompatibleAgent
 {
     /// <summary>
     /// 📷 팝업 패널. 모니터/창 탭 전환 + 항목 선택 + 확인/취소.

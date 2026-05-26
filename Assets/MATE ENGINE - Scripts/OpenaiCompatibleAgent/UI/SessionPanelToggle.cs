@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-namespace DesktopMatePlus
+namespace OpenaiCompatibleAgent
 {
     /// <summary>
     /// Toggles the left session panel and divider on/off via SetActive.

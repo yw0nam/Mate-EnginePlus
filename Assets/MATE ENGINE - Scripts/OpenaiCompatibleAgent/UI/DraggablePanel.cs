@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
 
-namespace DesktopMatePlus
+namespace OpenaiCompatibleAgent
 {
     /// <summary>
     /// 이 스크립트를 드래그 핸들(헤더/타이틀바) GameObject에 붙이세요.

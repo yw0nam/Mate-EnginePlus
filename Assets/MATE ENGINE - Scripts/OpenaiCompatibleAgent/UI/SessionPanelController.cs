@@ -1,10 +1,9 @@
 using System;
 using System.Collections.Generic;
-using Hermes;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace DesktopMatePlus
+namespace OpenaiCompatibleAgent
 {
     /// <summary>
     /// Session explorer — manages session list, delegates per-slot UI to SessionSlotHandler.

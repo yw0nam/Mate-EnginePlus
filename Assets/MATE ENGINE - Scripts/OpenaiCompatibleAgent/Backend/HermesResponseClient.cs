@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -11,7 +12,7 @@ using UnityEngine;
 using Utilities.Async;
 using Utilities.WebRequestRest.Interfaces;
 
-namespace Hermes
+namespace OpenaiCompatibleAgent
 {
     // SDK compatibility note (Phase A2): com.openai.unity maps Response.OutputText
     // only from the optional top-level "output_text" JSON field. hermes-agent
@@ -115,8 +116,24 @@ namespace Hermes
         /// <param name="onComplete">Called once when the streamed response completes.</param>
         /// <param name="onError">Called once when the SDK or server reports an error.</param>
         /// <param name="ct">Optional cancellation token.</param>
+        public Task SendAsync(
+            string userText,
+            Action<string> onTokenDelta,
+            Action onComplete,
+            Action<string> onError,
+            CancellationToken ct = default)
+        {
+            return SendAsync(userText, null, onTokenDelta, onComplete, onError, ct);
+        }
+
+        /// <summary>
+        /// Multimodal overload: send a user message together with one or more
+        /// images encoded as base64 data URLs (e.g. <c>data:image/png;base64,...</c>).
+        /// Each URL becomes an <c>input_image</c> content item in the request.
+        /// </summary>
         public async Task SendAsync(
             string userText,
+            IReadOnlyList<string> imageDataUrls,
             Action<string> onTokenDelta,
             Action onComplete,
             Action<string> onError,
@@ -140,7 +157,7 @@ namespace Hermes
 
             try
             {
-                var request = CreateRequest(userText);
+                var request = CreateRequest(userText, imageDataUrls);
                 LogWireTrace("Streaming", "before-await", request);
                 var streamState = new StreamingState();
                 Func<string, IServerSentEvent, Task> handler = (eventType, sseEvent) =>
@@ -316,10 +333,46 @@ namespace Hermes
 
         private CreateResponseRequest CreateRequest(string userText)
         {
+            return CreateRequest(userText, null);
+        }
+
+        private CreateResponseRequest CreateRequest(string userText, IReadOnlyList<string> imageDataUrls)
+        {
+            string text = userText ?? string.Empty;
+            string prevId = string.IsNullOrEmpty(LastResponseId) ? null : LastResponseId;
+
+            // Text-only fast path keeps the simple ctor that downstream tests rely on.
+            if (imageDataUrls == null || imageDataUrls.Count == 0)
+            {
+                return new CreateResponseRequest(
+                    textInput: text,
+                    model: modelId,
+                    previousResponseId: prevId,
+                    store: store);
+            }
+
+            // Multimodal: build a single user Message with a TextContent + one
+            // ImageContent per data URL. ImageContent(string) wraps the URL
+            // directly so we serialize as {"type":"input_image","image_url":"..."}.
+            var content = new List<IResponseContent>(imageDataUrls.Count + 1)
+            {
+                new OpenAI.Responses.TextContent(text, ResponseContentType.InputText)
+            };
+            for (int i = 0; i < imageDataUrls.Count; i++)
+            {
+                string url = imageDataUrls[i];
+                if (string.IsNullOrEmpty(url))
+                {
+                    continue;
+                }
+                content.Add(new ImageContent(imageUrl: url));
+            }
+
+            var message = new Message(Role.User, content);
             return new CreateResponseRequest(
-                textInput: userText ?? string.Empty,
+                input: (IResponseItem)message,
                 model: modelId,
-                previousResponseId: string.IsNullOrEmpty(LastResponseId) ? null : LastResponseId,
+                previousResponseId: prevId,
                 store: store);
         }
 

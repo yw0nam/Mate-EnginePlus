@@ -1,12 +1,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using Hermes;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
 
-namespace DesktopMatePlus
+namespace OpenaiCompatibleAgent
 {
     [Serializable]
     public class SessionInfo
@@ -111,14 +110,14 @@ namespace DesktopMatePlus
                             });
                         }
                     }
-                    // Hermes returns messages newest-first and ignores pagination
-                    // query params. Keep the most recent tail locally, then reverse
-                    // for the existing bottom-up chat rendering path.
+                    // Hermes returns messages oldest-first and ignores pagination
+                    // query params. Keep the most recent tail locally and emit it
+                    // in chronological order so the bottom-up chat renderer scrolls
+                    // to the newest message at the bottom.
                     if (limit > 0 && messages.Count > limit)
                     {
-                        messages = messages.GetRange(0, limit);
+                        messages = messages.GetRange(messages.Count - limit, limit);
                     }
-                    messages.Reverse();
                     onSuccess?.Invoke(messages);
                 }
                 catch (Exception e)

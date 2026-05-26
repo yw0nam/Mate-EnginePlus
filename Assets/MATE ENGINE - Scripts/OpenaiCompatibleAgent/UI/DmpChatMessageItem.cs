@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-namespace DesktopMatePlus
+namespace OpenaiCompatibleAgent
 {
     public class DmpChatMessageItem : MonoBehaviour
     {

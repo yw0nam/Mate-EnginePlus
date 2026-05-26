@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace DesktopMatePlus
+namespace OpenaiCompatibleAgent
 {
     // RECT를 여기서 선언해 ScreenCaptureManager에서 재사용
     [StructLayout(LayoutKind.Sequential)]

@@ -7,7 +7,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 
-namespace Hermes
+namespace OpenaiCompatibleAgent
 {
     /// <summary>
     /// Test seam for sentence-boundary detection through a fast-bunkai sidecar.

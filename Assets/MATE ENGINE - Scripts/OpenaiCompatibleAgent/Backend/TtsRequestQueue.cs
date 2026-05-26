@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 
-namespace Hermes
+namespace OpenaiCompatibleAgent
 {
     /// <summary>
     /// Starts Irodori synthesis requests concurrently, then emits completed WAVs in sequence order.

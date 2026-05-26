@@ -3,12 +3,11 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using Hermes;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-namespace DesktopMatePlus
+namespace OpenaiCompatibleAgent
 {
     public class DmpChatController : MonoBehaviour
     {
@@ -189,11 +188,11 @@ namespace DesktopMatePlus
                 SetScreenshotButtonArmed(false);
             }
 
-            // Phase D scope: hermes Responses API integration is text-only. Screen
-            // capture is reset/dismissed here; multimodal input is deferred per
-            // hermes-migration.md §8 Out of Scope.
+            // Multimodal turn: forward captured images as input_image content
+            // items. The orchestrator passes them through to HermesResponseClient
+            // which builds a typed Message(Role.User, [TextContent, ImageContent...]).
             if (captureImages != null && captureImages.Length > 0)
-                Debug.LogWarning("[DMP-Chat] Screen capture images dropped — hermes integration is text-only in Phase D.");
+                Debug.Log($"[DMP-Chat] Sending {captureImages.Length} image(s) with message.");
 
             _wasNewSession = string.IsNullOrEmpty(hermesClient?.LastResponseId);
 
@@ -216,6 +215,7 @@ namespace DesktopMatePlus
             var tokenBuffer = new StringBuilder();
             await streamingOrchestrator.SendAsync(
                 message,
+                imageDataUrls: captureImages,
                 onTokenDelta: t =>
                 {
                     tokenBuffer.Append(t);

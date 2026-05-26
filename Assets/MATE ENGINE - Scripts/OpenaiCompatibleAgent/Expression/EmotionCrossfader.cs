@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace DesktopMatePlus
+namespace OpenaiCompatibleAgent
 {
     /// <summary>
     /// Subscribes to TtsAudioPlayer.OnWavChunkStarted and crossfades UniversalBlendshapes

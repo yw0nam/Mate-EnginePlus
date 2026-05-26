@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Net.Http;
@@ -7,7 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 
-namespace Hermes
+namespace OpenaiCompatibleAgent
 {
     /// <summary>
     /// Test seam for Irodori-TTS synthesis.
@@ -44,8 +45,19 @@ namespace Hermes
         [SerializeField] private string irodoriBaseUrl = "http://localhost:8091";
 
         [Header("Voices")]
-        [SerializeField] private string voicesRootPath = @"D:\codes\waifu\references_voices";
+        // Empty by default: the runtime fallback chain (env var → serialized →
+        // platform defaults) in VoicesRootPath picks the actual path so a scene
+        // baked on one OS still works on the other.
+        [SerializeField] private string voicesRootPath = string.Empty;
         [SerializeField] private string defaultVoiceId = "七海";
+
+        // Environment variable that always wins over Inspector/serialized state.
+        // Useful for swapping voice roots without restarting the Editor.
+        private const string VoicesRootEnvVar = "MATE_VOICES_ROOT";
+
+        // Cached resolved path so we only log/scan once per Editor session.
+        private string _resolvedVoicesRoot;
+        private bool _voicesRootResolved;
 
         [Header("Synthesis params")]
         [SerializeField] private float defaultSeconds = 30f;
@@ -59,10 +71,117 @@ namespace Hermes
         public string EffectiveBaseUrl => irodoriBaseUrl;
 
         /// <summary>
-        /// Gets the root directory containing voice reference folders.
+        /// Gets the root directory containing voice reference folders. Resolved
+        /// once on first access via this chain (first hit wins):
+        ///   1. Environment variable <c>MATE_VOICES_ROOT</c>
+        ///   2. Serialized <c>voicesRootPath</c> (if it exists and has voice folders)
+        ///   3. Platform defaults — macOS: <c>~/Desktop/data/reference_voices/short_references</c>,
+        ///      Windows: <c>D:\codes\waifu\references_voices</c>
+        ///   4. Original serialized value (returned as-is so callers can log the
+        ///      misconfiguration even though nothing under it will load)
         /// Each subfolder name is a voice id; each must contain merged_audio.mp3.
         /// </summary>
-        public string VoicesRootPath => voicesRootPath;
+        public string VoicesRootPath => ResolveVoicesRoot();
+
+        private string ResolveVoicesRoot()
+        {
+            if (_voicesRootResolved)
+            {
+                return _resolvedVoicesRoot;
+            }
+
+            string resolved = ResolveVoicesRootUncached();
+            _resolvedVoicesRoot = resolved;
+            _voicesRootResolved = true;
+            Debug.Log($"[Irodori] VoicesRootPath resolved to: '{resolved}' (serialized='{voicesRootPath}')");
+            return resolved;
+        }
+
+        private string ResolveVoicesRootUncached()
+        {
+            // 1. Env var override.
+            string envValue;
+            try { envValue = Environment.GetEnvironmentVariable(VoicesRootEnvVar); }
+            catch { envValue = null; }
+            if (!string.IsNullOrEmpty(envValue) && HasMergedAudioChild(envValue))
+            {
+                return envValue;
+            }
+
+            // 2. Serialized path (only if it actually contains voices).
+            if (!string.IsNullOrEmpty(voicesRootPath) && HasMergedAudioChild(voicesRootPath))
+            {
+                return voicesRootPath;
+            }
+
+            // 3. Platform defaults.
+            foreach (string candidate in PlatformFallbackCandidates())
+            {
+                if (HasMergedAudioChild(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            // 4. Last resort — return the original serialized value so callers can
+            // surface the misconfiguration to the user.
+            return voicesRootPath ?? string.Empty;
+        }
+
+        private static IEnumerable<string> PlatformFallbackCandidates()
+        {
+#if UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            yield return Path.Combine(home, "Desktop", "data", "reference_voices", "short_references");
+            yield return Path.Combine(home, "Desktop", "data", "reference_voices");
+#elif UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            yield return @"D:\codes\waifu\references_voices";
+            yield return @"D:\codes\waifu\references_voices\short_references";
+#else
+            yield break;
+#endif
+        }
+
+        private static bool HasMergedAudioChild(string root)
+        {
+            if (string.IsNullOrEmpty(root))
+            {
+                return false;
+            }
+
+            try
+            {
+                if (!Directory.Exists(root))
+                {
+                    return false;
+                }
+
+                // Voice folder layout: <root>/<voiceId>/merged_audio.mp3.
+                foreach (string sub in Directory.EnumerateDirectories(root))
+                {
+                    if (File.Exists(Path.Combine(sub, "merged_audio.mp3")))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Irodori] HasMergedAudioChild('{root}') threw: {ex.Message}");
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Forces the next call to <see cref="VoicesRootPath"/> to re-run the
+        /// resolution chain. Useful after env-var or Inspector changes mid-session.
+        /// </summary>
+        public void InvalidateVoicesRoot()
+        {
+            _voicesRootResolved = false;
+            _resolvedVoicesRoot = null;
+        }
 
         /// <summary>
         /// Gets the default voice id used when no specific voice is selected.
@@ -102,7 +221,7 @@ namespace Hermes
                     string effectiveReferenceId = referenceId ?? defaultVoiceId;
                     if (!string.IsNullOrEmpty(effectiveReferenceId))
                     {
-                        string referenceAudioPath = Path.Combine(voicesRootPath, effectiveReferenceId, "merged_audio.mp3");
+                        string referenceAudioPath = Path.Combine(VoicesRootPath, effectiveReferenceId, "merged_audio.mp3");
                         using (FileStream referenceStream = File.OpenRead(referenceAudioPath))
                         {
                             StreamContent audioContent = new StreamContent(referenceStream);

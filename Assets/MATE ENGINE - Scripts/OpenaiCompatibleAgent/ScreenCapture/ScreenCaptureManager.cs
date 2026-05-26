@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using UnityEngine;
 
-namespace DesktopMatePlus
+namespace OpenaiCompatibleAgent
 {
     public static class ScreenCaptureManager
     {

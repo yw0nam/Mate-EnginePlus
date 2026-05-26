@@ -3,11 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Hermes;
 using TMPro;
 using UnityEngine;
 
-namespace DesktopMatePlus
+namespace OpenaiCompatibleAgent
 {
     /// <summary>
     /// Populates a TMP_Dropdown with available voice ids from the Irodori voices
