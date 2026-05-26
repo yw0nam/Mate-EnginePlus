@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace MateEngine.Platform.Win32
 {
-    // Placeholder. Existing implementation lives in DesktopMatePlus.ScreenCaptureManager.
+    // Placeholder. Existing implementation lives in OpenaiCompatibleAgent.ScreenCaptureManager.
     // Migration to this interface happens in a follow-up commit (handoff §6 step 1).
     internal sealed class Win32ScreenCapture : IPlatformScreenCapture
     {

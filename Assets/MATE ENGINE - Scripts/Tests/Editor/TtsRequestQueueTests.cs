@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using Hermes;
+using OpenaiCompatibleAgent;
 using NUnit.Framework;
 
-namespace Hermes.Tests
+namespace OpenaiCompatibleAgent.Tests
 {
     [TestFixture]
     public class TtsRequestQueueTests

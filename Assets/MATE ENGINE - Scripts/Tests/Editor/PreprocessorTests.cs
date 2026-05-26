@@ -1,7 +1,7 @@
-using Hermes;
+using OpenaiCompatibleAgent;
 using NUnit.Framework;
 
-namespace Hermes.Tests
+namespace OpenaiCompatibleAgent.Tests
 {
     /// <summary>
     /// Verifies migration plan §5 row A3: pure text preprocessing strips action/meta blocks,

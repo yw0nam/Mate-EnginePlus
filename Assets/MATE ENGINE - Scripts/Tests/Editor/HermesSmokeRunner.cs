@@ -4,11 +4,11 @@ using System.Linq.Expressions;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Hermes;
+using OpenaiCompatibleAgent;
 using UnityEditor;
 using UnityEngine;
 
-namespace Hermes.Tests
+namespace OpenaiCompatibleAgent.Tests
 {
     /// <summary>
     /// Editor menu entries for Phase A2/A5 manual smoke tests against the live
@@ -176,7 +176,7 @@ namespace Hermes.Tests
             // Read LastResponseId through the orchestrator's pass-through property so we
             // always observe the same HermesResponseClient instance the orchestrator actually
             // streamed through (avoids FindFirstObjectByType picking a stale/transient instance).
-            var ttsAudioPlayer = FindFirstObjectByTypeName("DesktopMatePlus.TtsAudioPlayer");
+            var ttsAudioPlayer = FindFirstObjectByTypeName("OpenaiCompatibleAgent.TtsAudioPlayer");
 
             int audioClips = 0;
             Delegate wavChunkStartedHandler = null;
