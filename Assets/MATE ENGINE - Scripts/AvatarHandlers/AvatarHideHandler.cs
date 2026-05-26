@@ -206,7 +206,6 @@ public class AvatarHideHandler : MonoBehaviour
 #endif
     }
 
-#if UNITY_STANDALONE_WIN
     int GetBaseDesiredEdgeX(RECT mon, Side side)
     {
         if (side == Side.Left) return mon.Left + edgeInsetPx;
@@ -490,7 +489,9 @@ public class AvatarHideHandler : MonoBehaviour
 
     void SetTopMost(bool on)
     {
+#if UNITY_STANDALONE_WIN
         SetWindowPos(unityHWND, on ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+#endif
     }
 
     delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
@@ -528,5 +529,4 @@ public class AvatarHideHandler : MonoBehaviour
     const int SM_CYVIRTUALSCREEN = 79;
     const int SM_XVIRTUALSCREEN = 76;
     const int SM_YVIRTUALSCREEN = 77;
-#endif
 }

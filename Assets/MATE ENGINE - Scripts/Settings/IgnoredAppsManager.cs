@@ -4,10 +4,13 @@ using TMPro;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+#if UNITY_STANDALONE_WIN
 using NAudio.CoreAudioApi;
+#endif
 
 public class AllowedAppsManager : MonoBehaviour
 {
+#if UNITY_STANDALONE_WIN
     public TMP_Dropdown runningAppsDropdown;
     public Button addToAllowedListButton;
     public Transform allowedAppsListContent;
@@ -150,4 +153,11 @@ public class AllowedAppsManager : MonoBehaviour
         UpdateAllowedListUI();
         SaveLoadHandler.SyncAllowedAppsToAllAvatars();
     }
+#else
+    // NAudio (WASAPI) is Windows-only. Class kept as an empty MonoBehaviour so
+    // existing Scene/Prefab references resolve; the audio-session-based "allowed apps"
+    // feature is unavailable on macOS until a cross-platform replacement lands.
+    // No-op stub keeps external callers (e.g. SettingsHandlerButtons) platform-agnostic.
+    public void RefreshUI() { }
+#endif
 }

@@ -169,6 +169,8 @@ public class SaveLoadHandler : MonoBehaviour
         public bool enableHusbandoMode = false;
         public bool enableAutoMemoryTrim = false;
 
+        public string selectedVoiceId = "";
+
         public int settingsVersion = 0;
         public bool alarmsEnabled = true;
         public bool enableMinecraftMessages = false;

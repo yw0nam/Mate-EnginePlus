@@ -61,9 +61,6 @@ sysinfo.txt
 Thumbs.db
 desktop.ini
 
-# Git-specific
-.gitattributes
-
 # Asset store tools
 Assets/AssetStoreTools*
 
@@ -76,3 +73,37 @@ Assets/Example Avatar - USED FOR MATE ENGINE
 ProjectSettings/Packages
 UserSettings/Layouts
 .omc
+
+# Per-machine / per-platform cache that should never be committed
+# lilToon stores the active Render Pipeline + Graphics API here; flips
+# between Direct3D11 (Windows) and Metal (macOS) on every editor open
+Assets/MATE ENGINE - Shaders/jp.lilxyzw.liltoon-1.8.5/Editor/CurrentRP.txt
+
+# Unity auto-saved scene backups when the editor crashes/recovers
+Assets/_Recovery/
+
+# unity-cli screenshot output (local debugging artifact)
+/Screenshots/
+
+# Per-user Editor state — these auto-mutate every time the editor opens a scene
+# or moves a window. Already partially listed above (UserSettings/Layouts) but
+# made comprehensive here. Tracked files were untracked via `git rm --cached`
+# in the same commit that added these lines.
+UserSettings/
+
+# Runtime/plugin log files at repo root (e.g. uWindowCapture.log) — generated
+# on every play session, no source value. Previously tracked, untracked via
+# `git rm --cached` in the same commit that added this rule.
+*.log
+
+# UMotion Editor auto-backups — auto-generated rolling backups of motion
+# data while the UMotion window is open. Not source data; never load-bearing.
+# Previously tracked, untracked in the same commit that added this rule.
+UMotionData/AutoBackups/
+
+# Unity Test Runner leftover scenes (created during PlayMode test runs,
+# named InitTestScene<GUID>.unity at Assets/ root, sometimes orphaned on
+# timeout/crash). Always regenerated, never source.
+Assets/InitTestScene*.unity
+Assets/InitTestScene*.unity.meta
+

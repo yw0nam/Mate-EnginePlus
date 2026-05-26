@@ -114,8 +114,12 @@ public class AvatarWindowHandler : MonoBehaviour
     int _lastSnapTopY;
     uint _currentPid;
     float _guardRadiusSq;
+    private static readonly bool IsWindows =
+        Application.platform == RuntimePlatform.WindowsEditor ||
+        Application.platform == RuntimePlatform.WindowsPlayer;
     void Start()
     {
+        if (!IsWindows) return;
         unityHWND = Process.GetCurrentProcess().MainWindowHandle;
         _currentPid = GetCurrentProcessId();
         animator = GetComponent<Animator>();
@@ -166,9 +170,7 @@ public class AvatarWindowHandler : MonoBehaviour
     }
     void Update()
     {
-#if !UNITY_STANDALONE_WIN
-        return;
-#endif
+        if (!IsWindows) return;
         if (snappedHWND != IntPtr.Zero)
         {
             if ((transform.lossyScale - _prevLossyScale).sqrMagnitude > 1e-8f) { _snapSmoothingActive = false; _snapVelX = _snapVelY = 0f; }
@@ -882,7 +884,12 @@ public class AvatarWindowHandler : MonoBehaviour
         r.Left = p.X; r.Top = p.Y; r.Right = p.X + client.Right; r.Bottom = p.Y + client.Bottom;
         return true;
     }
-    void SetTopMost(bool en) => SetWindowPos(unityHWND, en ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    void SetTopMost(bool en)
+    {
+#if UNITY_STANDALONE_WIN
+        SetWindowPos(unityHWND, en ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+#endif
+    }
 
     bool IsWindowMaximized(IntPtr hwnd)
     {
@@ -945,7 +952,6 @@ public class AvatarWindowHandler : MonoBehaviour
         return false;
     }
 
-#if UNITY_STANDALONE_WIN
     [DllImport("kernel32.dll")] static extern uint GetCurrentProcessId();
     [DllImport("user32.dll")] static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
     [StructLayout(LayoutKind.Sequential)]
@@ -991,5 +997,4 @@ public class AvatarWindowHandler : MonoBehaviour
     const uint SWP_NOMOVE = 0x0002;
     const uint SWP_NOSIZE = 0x0001;
     const uint SWP_NOACTIVATE = 0x0010;
-#endif
 }

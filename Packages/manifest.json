@@ -1,5 +1,16 @@
 {
+  "scopedRegistries": [
+    {
+      "name": "OpenUPM",
+      "url": "https://package.openupm.com",
+      "scopes": [
+        "com.openai",
+        "com.utilities"
+      ]
+    }
+  ],
   "dependencies": {
+    "com.openai.unity": "8.8.9",
     "com.coplaydev.unity-mcp": "https://github.com/CoplayDev/unity-mcp.git?path=/MCPForUnity",
     "com.unity.2d.sprite": "1.0.0",
     "com.unity.collab-proxy": "2.9.3",

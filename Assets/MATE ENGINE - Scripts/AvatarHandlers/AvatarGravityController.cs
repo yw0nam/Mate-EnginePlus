@@ -24,8 +24,13 @@ public class AvatarGravityController : MonoBehaviour
     private Vrm10Instance vrm10Instance;
     private IntPtr unityHWND;
 
+    private static readonly bool IsWindows =
+        Application.platform == RuntimePlatform.WindowsEditor ||
+        Application.platform == RuntimePlatform.WindowsPlayer;
+
     void Start()
     {
+        if (!IsWindows) return;
         previousWindowPos = GetWindowPosition();
         unityHWND = Process.GetCurrentProcess().MainWindowHandle;
 
@@ -41,6 +46,7 @@ public class AvatarGravityController : MonoBehaviour
 
     void Update()
     {
+        if (!IsWindows) return;
         Vector2Int currentWindowPos = GetWindowPosition();
         Vector2Int delta = currentWindowPos - previousWindowPos;
 

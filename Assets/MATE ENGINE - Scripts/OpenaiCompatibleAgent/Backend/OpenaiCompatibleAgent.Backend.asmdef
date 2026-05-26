@@ -1,0 +1,21 @@
+{
+    "name": "OpenaiCompatibleAgent.Backend",
+    "rootNamespace": "OpenaiCompatibleAgent",
+    "references": [
+        "Unity.Nuget.Newtonsoft.Json",
+        "OpenAI",
+        "Utilities.Async",
+        "Utilities.Rest",
+        "Utilities.Encoder.Wav",
+        "Utilities.Extensions"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
