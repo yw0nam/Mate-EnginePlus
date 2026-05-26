@@ -123,6 +123,7 @@ Session list uses a template-clone pattern:
 - **Never** hardcode object paths like `transform.Find("deeply/nested/path")` — fragile. Use serialized `[Header]` fields assigned in Inspector.
 - **Never** suppress C# warnings with `#pragma warning disable`. Fix the root cause.
 - **Never** modify files in `MATE ENGINE - Packages/` or `LLMUnity/` (vendor code) unless absolutely necessary. Document any changes.
+- **Never** add `*.mat` to `.gitignore` — they are project source. The lilToon shader re-quantizes float properties (7-8th decimal drift on `_MainColor`/`_OverlayColor` etc.) every time Unity reimports them. There is no EditorSettings flag that suppresses this; `m_SerializationMode: 2` (Force Text) is already correct. Accept the noise — commit it occasionally as `chore: refresh material serialization`. If a specific `.mat` is truly volatile, convert it to a **Material Variant** of a stable parent so only deltas serialize. Ignoring the files breaks fresh clones (pink shaders).
 
 ## Build / Test
 
