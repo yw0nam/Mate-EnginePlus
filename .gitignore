@@ -101,3 +101,9 @@ UserSettings/
 # Previously tracked, untracked in the same commit that added this rule.
 UMotionData/AutoBackups/
 
+# Unity Test Runner leftover scenes (created during PlayMode test runs,
+# named InitTestScene<GUID>.unity at Assets/ root, sometimes orphaned on
+# timeout/crash). Always regenerated, never source.
+Assets/InitTestScene*.unity
+Assets/InitTestScene*.unity.meta
+
