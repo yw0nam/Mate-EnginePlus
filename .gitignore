@@ -91,3 +91,13 @@ Assets/_Recovery/
 # in the same commit that added these lines.
 UserSettings/
 
+# Runtime/plugin log files at repo root (e.g. uWindowCapture.log) — generated
+# on every play session, no source value. Previously tracked, untracked via
+# `git rm --cached` in the same commit that added this rule.
+*.log
+
+# UMotion Editor auto-backups — auto-generated rolling backups of motion
+# data while the UMotion window is open. Not source data; never load-bearing.
+# Previously tracked, untracked in the same commit that added this rule.
+UMotionData/AutoBackups/
+
