@@ -70,6 +70,23 @@ namespace OpenaiCompatibleAgent
         /// </summary>
         public string EffectiveBaseUrl => irodoriBaseUrl;
 
+        public string BaseUrl
+        {
+            get => irodoriBaseUrl;
+            set => irodoriBaseUrl = value ?? string.Empty;
+        }
+
+        /// <summary>
+        /// Replaces the serialized voices root and invalidates the resolution cache so
+        /// the next <see cref="VoicesRootPath"/> read re-runs the env→serialized→platform chain.
+        /// </summary>
+        public void SetVoicesRootPath(string value)
+        {
+            voicesRootPath = value ?? string.Empty;
+            _voicesRootResolved = false;
+            _resolvedVoicesRoot = null;
+        }
+
         /// <summary>
         /// Gets the root directory containing voice reference folders. Resolved
         /// once on first access via this chain (first hit wins):

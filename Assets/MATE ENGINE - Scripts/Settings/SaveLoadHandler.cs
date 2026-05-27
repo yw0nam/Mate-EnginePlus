@@ -181,6 +181,29 @@ public class SaveLoadHandler : MonoBehaviour
 
         public bool enableLocomotion = false;
 
+        // Hermes / OpenAI-compatible backend
+        public string hermesHost = "localhost";
+        public int hermesPort = 8642;
+        public string hermesApiKey = "hermes_api_key";
+        public string hermesModelId = "hermes-agent";
+
+        // Irodori TTS
+        public string irodoriBaseUrl = "http://localhost:8091";
+        public string voicesRootPath = "D:\\codes\\waifu\\references_voices";
+
+        // Streaming / TTS behavior
+        public int sentenceMinChunkLength = 50;
+        public float ttsBarrierTimeoutSeconds = 30f;
+
+        // Chat UI
+        public int chatMaxMessages = 100;
+        public bool chatAutoScroll = true;
+        public string chatAiName = "AI";
+        public string chatUserName = "User";
+
+        // Chat avatars (file names under persistentDataPath/avatars/, e.g. "ai.png")
+        public string aiAvatarPath = "";
+        public string userAvatarPath = "";
 
         //ALARM
         [Serializable]
@@ -227,6 +250,19 @@ public class SaveLoadHandler : MonoBehaviour
             data.settingsVersion = 1;
             SaveToDisk();
         }
+        if (string.IsNullOrEmpty(data.hermesHost)) data.hermesHost = "localhost";
+        if (data.hermesPort <= 0) data.hermesPort = 8642;
+        if (string.IsNullOrEmpty(data.hermesApiKey)) data.hermesApiKey = "hermes_api_key";
+        if (string.IsNullOrEmpty(data.hermesModelId)) data.hermesModelId = "hermes-agent";
+        if (string.IsNullOrEmpty(data.irodoriBaseUrl)) data.irodoriBaseUrl = "http://localhost:8091";
+        if (string.IsNullOrEmpty(data.voicesRootPath)) data.voicesRootPath = "D:\\codes\\waifu\\references_voices";
+        if (data.sentenceMinChunkLength <= 0) data.sentenceMinChunkLength = 50;
+        if (data.ttsBarrierTimeoutSeconds <= 0f) data.ttsBarrierTimeoutSeconds = 30f;
+        if (data.chatMaxMessages <= 0) data.chatMaxMessages = 100;
+        if (string.IsNullOrEmpty(data.chatAiName)) data.chatAiName = "AI";
+        if (string.IsNullOrEmpty(data.chatUserName)) data.chatUserName = "User";
+        if (data.aiAvatarPath == null) data.aiAvatarPath = "";
+        if (data.userAvatarPath == null) data.userAvatarPath = "";
     }
 
     public static void SyncAllowedAppsToAllAvatars()

@@ -70,6 +70,22 @@ namespace OpenaiCompatibleAgent
         /// </summary>
         public string BaseDomain => $"{host}:{port}";
 
+        public string Host { get => host; set => host = value; }
+        public int Port { get => port; set => port = value; }
+        public string ModelId { get => modelId; set => modelId = value; }
+
+        public void SetApiKey(string value) => apiKey = value;
+
+        /// <summary>
+        /// Rebuilds the underlying OpenAIClient using the current host/port/apiKey.
+        /// Call after mutating connection fields at runtime (e.g. from a settings menu).
+        /// </summary>
+        public void Reinitialize()
+        {
+            _client = null;
+            InitializeClient();
+        }
+
         private OpenAIClient _client;
         private readonly ConcurrentQueue<Action> _mainThreadQueue = new();
 

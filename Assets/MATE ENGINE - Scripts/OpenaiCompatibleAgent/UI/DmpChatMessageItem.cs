@@ -112,5 +112,10 @@ namespace OpenaiCompatibleAgent
         {
             return chatText != null ? chatText.text : "";
         }
+
+        public void SetAvatar(Sprite sprite)
+        {
+            if (avatarImage != null) avatarImage.sprite = sprite;
+        }
     }
 }

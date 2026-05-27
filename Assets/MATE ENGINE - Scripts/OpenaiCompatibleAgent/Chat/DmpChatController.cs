@@ -335,6 +335,23 @@ namespace OpenaiCompatibleAgent
             _activeAIBubble = null;
         }
 
+        // Replace avatar sprites at runtime. Pass null to leave a side unchanged.
+        // Also rewrites avatars on every already-rendered message in the list.
+        public void SetAvatarSprites(Sprite ai, Sprite user)
+        {
+            if (ai != null) aiAvatar = ai;
+            if (user != null) userAvatar = user;
+
+            foreach (var go in _messageObjects)
+            {
+                if (go == null) continue;
+                var item = go.GetComponent<DmpChatMessageItem>();
+                if (item == null) continue;
+                bool isAI = go.name == "AIMessage";
+                item.SetAvatar(isAI ? aiAvatar : userAvatar);
+            }
+        }
+
         public void LoadHistory(List<ChatMessageData> messages)
         {
             ClearMessages();

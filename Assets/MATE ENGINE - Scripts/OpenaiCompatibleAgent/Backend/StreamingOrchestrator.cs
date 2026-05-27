@@ -36,6 +36,26 @@ namespace OpenaiCompatibleAgent
         /// </summary>
         public string CurrentVoiceId { get; set; }
 
+        /// <summary>
+        /// Sentence chunker min length. Applied on the next turn (chunker is
+        /// recreated each send).
+        /// </summary>
+        public int SentenceMinChunkLength
+        {
+            get => sentenceMinChunkLength;
+            set => sentenceMinChunkLength = Mathf.Max(1, value);
+        }
+
+        /// <summary>
+        /// TTS barrier timeout in seconds, read on each barrier wait. Takes
+        /// effect on the next turn.
+        /// </summary>
+        public float TtsBarrierTimeoutSeconds
+        {
+            get => ttsBarrierTimeoutSeconds;
+            set => ttsBarrierTimeoutSeconds = Mathf.Max(0.1f, value);
+        }
+
         private SentenceChunker _chunker;
         private TtsRequestQueue _ttsQueue;
         private int _nextSequence;
