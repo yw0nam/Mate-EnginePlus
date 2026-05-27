@@ -15,6 +15,11 @@ namespace OpenaiCompatibleAgent
         [SerializeField] private TMP_Text timeText;
         [SerializeField] private GameObject speakerButtonObj;
 
+        [Header("Bubble background (optional — wired in Inspector)")]
+        [SerializeField] private Image bubbleBackground;
+        [SerializeField] private Color aiBubbleColor = new Color(0.110f, 0.161f, 0.224f, 1f);
+        [SerializeField] private Color userBubbleColor = new Color(0.086f, 0.122f, 0.188f, 1f);
+
         [Header("Typewriter")]
         [Tooltip("Chars revealed per second while streaming. Set <= 0 to disable and render instantly.")]
         [SerializeField] private float charsPerSecond = 40f;
@@ -36,6 +41,7 @@ namespace OpenaiCompatibleAgent
             if (nameText != null) nameText.text = senderName;
             if (timeText != null) timeText.text = timestamp;
             if (speakerButtonObj != null) speakerButtonObj.SetActive(isAI);
+            if (bubbleBackground != null) bubbleBackground.color = isAI ? aiBubbleColor : userBubbleColor;
 
             StopTypewriter();
             _targetText = content ?? "";

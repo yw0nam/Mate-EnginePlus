@@ -117,13 +117,14 @@ namespace OpenaiCompatibleAgent
             _selected = src;
 
             // 같은 목록 내 모든 항목 하이라이트 해제 후 선택 항목만 강조
+            // 색상은 DESIGN.md 의 interactive.active / surface.input 토큰을 따른다.
             foreach (Transform child in content)
             {
                 var img = child.GetComponent<Image>();
                 if (img != null)
                     img.color = child.gameObject == go
-                        ? new Color(0.3f, 0.1f, 0.6f, 1f)   // 선택: 보라색
-                        : new Color(0.1f, 0.1f, 0.15f, 1f);  // 미선택: 어두운 배경
+                        ? new Color(0.351f, 0.393f, 0.519f, 1f)  // interactive.active
+                        : new Color(0.088f, 0.123f, 0.189f, 1f); // surface.input
             }
         }
 

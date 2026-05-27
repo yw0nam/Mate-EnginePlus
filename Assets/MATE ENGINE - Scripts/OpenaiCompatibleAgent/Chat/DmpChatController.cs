@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -25,6 +26,12 @@ namespace OpenaiCompatibleAgent
         public Button sendButton;
         public GameObject thinkingIndicator;
         public TMP_Text connectionStatusText;
+
+        [Header("Send / Stop morph (optional)")]
+        [Tooltip("If wired, sendButton's label swaps between sendLabel and stopLabel while streaming.")]
+        public TMP_Text sendButtonLabel;
+        public string sendLabel = "Send";
+        public string stopLabel = "Stop";
 
         [Header("Avatar Sprites")]
         public Sprite aiAvatar;
@@ -52,6 +59,7 @@ namespace OpenaiCompatibleAgent
         private DmpChatMessageItem _activeAIBubble;
         private bool _isStreaming;
         private bool _connected;
+        private CancellationTokenSource _turnCts;
 
         private Animator _avatarAnimator;
         private static readonly int IsTalkingHash = Animator.StringToHash("isTalking");
@@ -95,6 +103,8 @@ namespace OpenaiCompatibleAgent
 
             if (captureChip != null)
                 captureChip.OnChipCancelled -= OnCaptureCancelled;
+
+            DisposeTurnCts();
         }
 
         // ==== Connection ====
@@ -123,14 +133,30 @@ namespace OpenaiCompatibleAgent
         private void SetInputInteractable(bool interactable)
         {
             if (inputField != null) inputField.interactable = interactable;
-            if (sendButton != null) sendButton.interactable = interactable;
             if (screenshotButton != null) screenshotButton.interactable = interactable;
+            // sendButton stays interactable — it morphs to Stop while streaming.
+            // Connection-based gating is handled by OnSendClicked's _connected guard.
+        }
+
+        private void SetSendButtonState(bool streaming)
+        {
+            if (sendButtonLabel != null)
+                sendButtonLabel.text = streaming ? stopLabel : sendLabel;
         }
 
         // ==== Send Message ====
 
         public async void OnSendClicked()
         {
+            // Click during streaming acts as Stop. Cancel the in-flight turn —
+            // StreamingOrchestrator catches OperationCanceledException and fires
+            // onError("Request cancelled."), which restores UI state below.
+            if (_isStreaming)
+            {
+                _turnCts?.Cancel();
+                return;
+            }
+
             try
             {
                 await OnSendClickedCore();
@@ -142,11 +168,19 @@ namespace OpenaiCompatibleAgent
                 _activeAIBubble = null;
                 ShowThinking(false);
                 SetInputInteractable(true);
+                SetSendButtonState(false);
                 SetTalking(false);
                 _pendingCapture = null;
                 captureChip?.Hide();
                 SetScreenshotButtonArmed(false);
+                DisposeTurnCts();
             }
+        }
+
+        private void DisposeTurnCts()
+        {
+            _turnCts?.Dispose();
+            _turnCts = null;
         }
 
         private async Awaitable OnSendClickedCore()
@@ -207,10 +241,14 @@ namespace OpenaiCompatibleAgent
             _isStreaming = true;
             ShowThinking(true);
             SetInputInteractable(false);
+            SetSendButtonState(true);
             SetTalking(true);
 
             if (ttsPlayer != null) ttsPlayer.Reset();
             if (emotionCrossfader != null) emotionCrossfader.ResetExpressions();
+
+            DisposeTurnCts();
+            _turnCts = new CancellationTokenSource();
 
             var tokenBuffer = new StringBuilder();
             await streamingOrchestrator.SendAsync(
@@ -229,7 +267,9 @@ namespace OpenaiCompatibleAgent
                     _activeAIBubble = null;
                     ShowThinking(false);
                     SetInputInteractable(true);
+                    SetSendButtonState(false);
                     SetTalking(false);
+                    DisposeTurnCts();
 
                     if (_wasNewSession && sessionPanel != null)
                     {
@@ -248,9 +288,12 @@ namespace OpenaiCompatibleAgent
                     _activeAIBubble = null;
                     ShowThinking(false);
                     SetInputInteractable(true);
+                    SetSendButtonState(false);
                     SetTalking(false);
+                    DisposeTurnCts();
                     ScrollToBottom();
-                });
+                },
+                ct: _turnCts.Token);
         }
 
         // ==== Message Management ====
@@ -395,9 +438,10 @@ namespace OpenaiCompatibleAgent
         {
             if (screenshotButton == null) return;
             var colors = screenshotButton.colors;
+            // DESIGN.md tokens — interactive.active (armed) / surface.input (rest).
             colors.normalColor = armed
-                ? new Color(0.48f, 0.3f, 1f, 1f)   // 보라색 활성
-                : new Color(0.16f, 0.16f, 0.22f, 1f); // 기본 회색
+                ? new Color(0.351f, 0.393f, 0.519f, 1f)
+                : new Color(0.088f, 0.123f, 0.189f, 1f);
             screenshotButton.colors = colors;
         }
     }
