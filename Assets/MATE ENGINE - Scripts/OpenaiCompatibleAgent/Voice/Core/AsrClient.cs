@@ -33,9 +33,9 @@ namespace OpenaiCompatibleAgent.Voice
                 form.Add(new StringContent(_model), "model");
                 form.Add(new StringContent("json"), "response_format");
 
-                using (var resp = await _http.PostAsync(_baseUrl + "/v1/audio/transcriptions", form, ct))
+                using (var resp = await _http.PostAsync(_baseUrl + "/v1/audio/transcriptions", form, ct).ConfigureAwait(false))
                 {
-                    string body = await resp.Content.ReadAsStringAsync();
+                    string body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
                     if (!resp.IsSuccessStatusCode)
                     {
                         Debug.LogWarning($"[Voice] ASR HTTP {(int)resp.StatusCode}: {body}");
