@@ -53,6 +53,19 @@ namespace OpenaiCompatibleAgent.Voice
             _clip = null;
         }
 
+        /// <summary>
+        /// Advance past buffered audio without emitting any frames. Call while input is gated so
+        /// stale audio (e.g. the companion's own TTS) does not flood the consumer when polling resumes.
+        /// </summary>
+        public void Drain()
+        {
+            if (!IsRecording || _clip == null) return;
+            int writePos = Microphone.GetPosition(_device);
+            if (writePos < 0) return;
+            _readPos = writePos;
+            _carryCount = 0;
+        }
+
         /// <summary>Drain newly recorded samples, invoking onFrame for each complete 512-sample frame.</summary>
         public void Poll(Action<float[]> onFrame)
         {

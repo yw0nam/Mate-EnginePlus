@@ -44,10 +44,9 @@ namespace OpenaiCompatibleAgent.VoiceRuntime
         SileroVad _vad;
         VadSegmenter _segmenter;
         AsrClient _asr;
-        bool _enabled;
+        bool _listening;
         bool _awaitingResponse;
         float _awaitingSince;
-        bool _ttsWasPlaying;
         bool _transcribing;
 
         void Awake()
@@ -75,18 +74,18 @@ namespace OpenaiCompatibleAgent.VoiceRuntime
         /// <summary>Wired to MicButton.onClick. Toggles the master voice-input enable.</summary>
         public void ToggleListening()
         {
-            _enabled = !_enabled;
+            _listening = !_listening;
             if (mode == VoiceInputMode.AlwaysOn)
             {
-                if (_enabled) StartMic(); else StopMic();
+                if (_listening) StartMic(); else StopMic();
             }
             UpdateColor();
-            Debug.Log($"[Voice] enabled={_enabled} mode={mode}");
+            Debug.Log($"[Voice] enabled={_listening} mode={mode}");
         }
 
         void StartMic()
         {
-            if (_vad == null) { Debug.LogWarning("[Voice] VAD unavailable; cannot listen."); _enabled = false; return; }
+            if (_vad == null) { Debug.LogWarning("[Voice] VAD unavailable; cannot listen."); _listening = false; return; }
             _vad.ResetState();
             _segmenter.Reset();
             _mic.Start();
@@ -96,7 +95,7 @@ namespace OpenaiCompatibleAgent.VoiceRuntime
 
         void Update()
         {
-            if (!_enabled) return;
+            if (!_listening) return;
 
             if (mode == VoiceInputMode.PushToTalk)
             {
@@ -105,14 +104,20 @@ namespace OpenaiCompatibleAgent.VoiceRuntime
             }
 
             bool ttsPlaying = ttsAudioPlayer != null && ttsAudioPlayer.IsPlaying;
-            if (_ttsWasPlaying && !ttsPlaying) _awaitingResponse = false;
-            _ttsWasPlaying = ttsPlaying;
-            if (_awaitingResponse && Time.time - _awaitingSince > 30f) _awaitingResponse = false;
+            // Once TTS starts, IsPlaying governs the gate. Otherwise wait only briefly for a
+            // response that may produce no TTS (text-only turn / TTS down) rather than blocking long.
+            if (ttsPlaying) _awaitingResponse = false;
+            else if (_awaitingResponse && Time.time - _awaitingSince > 8f) _awaitingResponse = false;
 
             bool gated = ttsPlaying || _awaitingResponse;
 
-            if (mode == VoiceInputMode.AlwaysOn && _mic.IsRecording && !gated)
-                _mic.Poll(FeedFrame);
+            if (mode == VoiceInputMode.AlwaysOn && _mic.IsRecording)
+            {
+                // While gated, discard buffered mic audio so it can't flood the VAD as a false
+                // utterance when the gate lifts (e.g. the companion's own TTS bleed).
+                if (gated) _mic.Drain();
+                else _mic.Poll(FeedFrame);
+            }
             else if (mode == VoiceInputMode.PushToTalk && _mic.IsRecording)
                 _mic.Poll(FeedFrame);
 
@@ -166,7 +171,7 @@ namespace OpenaiCompatibleAgent.VoiceRuntime
         {
             if (micButtonImage == null) return;
             Color c;
-            if (!_enabled) c = colorOff;
+            if (!_listening) c = colorOff;
             else if (_transcribing) c = colorTranscribing;
             else if (_segmenter != null && _segmenter.IsInSpeech) c = colorCapturing;
             else c = colorIdle;
