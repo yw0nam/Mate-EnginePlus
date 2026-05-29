@@ -29,6 +29,14 @@ namespace OpenaiCompatibleAgent
         // Fires whenever revealed text grows. Controller hooks this to keep scroll pinned.
         public event Action OnTextRevealed;
 
+        // ==== Font scaling ====
+        // ChatFontSizeController writes this; every new bubble picks it up in Initialize
+        // so font changes also apply to messages created later (streaming/history).
+        public static float CurrentFontScale = 1f;
+
+        private float _baseChatSize, _baseNameSize, _baseTimeSize;
+        private bool _baseSizesCaptured;
+
         private string _targetText = "";
         private float _revealedChars;
         private bool _typewriterStarted;
@@ -48,6 +56,29 @@ namespace OpenaiCompatibleAgent
             _revealedChars = _targetText.Length;
             _typewriterStarted = false;
             if (chatText != null) chatText.text = _targetText;
+
+            // 프리팹 기본 폰트 크기를 한 번 기억해두고 현재 스케일을 적용한다.
+            CaptureBaseSizes();
+            ApplyFontScale(CurrentFontScale);
+        }
+
+        // 프리팹의 원본 폰트 크기를 한 번만 캡처 (이후 스케일의 기준값).
+        private void CaptureBaseSizes()
+        {
+            if (_baseSizesCaptured) return;
+            if (chatText != null) _baseChatSize = chatText.fontSize;
+            if (nameText != null) _baseNameSize = nameText.fontSize;
+            if (timeText != null) _baseTimeSize = timeText.fontSize;
+            _baseSizesCaptured = true;
+        }
+
+        /// <summary>기본 폰트 크기에 배율을 곱해 이 버블의 텍스트 크기를 갱신한다.</summary>
+        public void ApplyFontScale(float scale)
+        {
+            CaptureBaseSizes();
+            if (chatText != null) { chatText.enableAutoSizing = false; chatText.fontSize = _baseChatSize * scale; }
+            if (nameText != null) { nameText.enableAutoSizing = false; nameText.fontSize = _baseNameSize * scale; }
+            if (timeText != null) { timeText.enableAutoSizing = false; timeText.fontSize = _baseTimeSize * scale; }
         }
 
         // Streaming partial from backend. Updates target text; typewriter catches up over time.
