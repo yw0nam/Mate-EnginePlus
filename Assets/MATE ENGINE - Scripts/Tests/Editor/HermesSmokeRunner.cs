@@ -38,7 +38,7 @@ namespace OpenaiCompatibleAgent.Tests
                     return;
                 }
 
-                byte[] bytes = await client.SynthesizeAsync("こんにちは。今日はいい天気ですね。");
+                byte[] bytes = await client.SynthesizeAsync("こんにちは。今日はいい天気ですね。", null, CancellationToken.None);
                 int len = bytes == null ? -1 : bytes.Length;
                 Debug.Log("[Smoke] Irodori synthesize: bytes=" + len);
 

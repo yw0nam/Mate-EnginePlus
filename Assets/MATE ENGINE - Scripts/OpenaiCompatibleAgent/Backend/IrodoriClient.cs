@@ -11,33 +11,17 @@ using UnityEngine;
 namespace OpenaiCompatibleAgent
 {
     /// <summary>
-    /// Test seam for Irodori-TTS synthesis.
-    /// </summary>
-    public interface IIrodoriClient
-    {
-        /// <summary>
-        /// Synthesizes speech through Irodori-TTS and returns raw WAV bytes, or null on failure.
-        /// </summary>
-        Task<byte[]> SynthesizeAsync(
-            string text,
-            string referenceId = null,
-            float? seconds = null,
-            int? numSteps = null,
-            float? cfgScaleText = null,
-            float? cfgScaleSpeaker = null,
-            CancellationToken ct = default);
-    }
-
-    /// <summary>
     /// Unity-facing HTTP client for the local Irodori-TTS server.
     /// </summary>
     /// <remarks>
     /// Request fields were checked against both the nanobot Python client and the FastAPI server.
     /// No form-field divergence: both use text, reference_audio, seconds, num_steps,
-    /// cfg_scale_text, and cfg_scale_speaker. The Python client labels the MP3 upload as
-    /// audio/wav, but the server accepts arbitrary upload suffixes; Unity sends audio/mpeg.
+    /// cfg_scale_text, and cfg_scale_speaker. These tuning values are sourced from serialized
+    /// Inspector defaults; callers cannot override them per request. The Python client labels
+    /// the MP3 upload as audio/wav, but the server accepts arbitrary upload suffixes; Unity
+    /// sends audio/mpeg.
     /// </remarks>
-    public class IrodoriClient : MonoBehaviour, IIrodoriClient
+    public class IrodoriClient : MonoBehaviour, ITtsClient
     {
         private static readonly HttpClient _http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
 
@@ -208,32 +192,20 @@ namespace OpenaiCompatibleAgent
         /// <summary>
         /// Synthesizes speech through Irodori-TTS and returns raw WAV bytes, or null on failure.
         /// </summary>
-        /// <param name="text">Text to synthesize.</param>
-        /// <param name="referenceId">Optional voice reference id. When null, the configured default voice is used if non-empty.</param>
-        /// <param name="seconds">Optional output duration override in seconds.</param>
-        /// <param name="numSteps">Optional diffusion step count override.</param>
-        /// <param name="cfgScaleText">Optional text CFG scale override.</param>
-        /// <param name="cfgScaleSpeaker">Optional speaker CFG scale override.</param>
-        /// <param name="ct">Cancellation token for the HTTP request and response read.</param>
-        /// <returns>Raw WAV response bytes on success; otherwise null.</returns>
         public async Task<byte[]> SynthesizeAsync(
             string text,
-            string referenceId = null,
-            float? seconds = null,
-            int? numSteps = null,
-            float? cfgScaleText = null,
-            float? cfgScaleSpeaker = null,
-            CancellationToken ct = default)
+            string referenceId,
+            CancellationToken ct)
         {
             try
             {
                 using (MultipartFormDataContent form = new MultipartFormDataContent())
                 {
                     form.Add(new StringContent(text ?? string.Empty), "text");
-                    form.Add(new StringContent((seconds ?? defaultSeconds).ToString("R", CultureInfo.InvariantCulture)), "seconds");
-                    form.Add(new StringContent((numSteps ?? defaultNumSteps).ToString(CultureInfo.InvariantCulture)), "num_steps");
-                    form.Add(new StringContent((cfgScaleText ?? defaultCfgScaleText).ToString("R", CultureInfo.InvariantCulture)), "cfg_scale_text");
-                    form.Add(new StringContent((cfgScaleSpeaker ?? defaultCfgScaleSpeaker).ToString("R", CultureInfo.InvariantCulture)), "cfg_scale_speaker");
+                    form.Add(new StringContent(defaultSeconds.ToString("R", CultureInfo.InvariantCulture)), "seconds");
+                    form.Add(new StringContent(defaultNumSteps.ToString(CultureInfo.InvariantCulture)), "num_steps");
+                    form.Add(new StringContent(defaultCfgScaleText.ToString("R", CultureInfo.InvariantCulture)), "cfg_scale_text");
+                    form.Add(new StringContent(defaultCfgScaleSpeaker.ToString("R", CultureInfo.InvariantCulture)), "cfg_scale_speaker");
 
                     string effectiveReferenceId = referenceId ?? defaultVoiceId;
                     if (!string.IsNullOrEmpty(effectiveReferenceId))

@@ -1,6 +1,6 @@
 # AGENTS.md — Mate-EnginePlus (Unity)
 
-Unity 6 desktop companion frontend. Streams chat from hermes-agent (localhost:8642), synthesizes speech via Irodori-TTS (localhost:8091), animates VRM avatar.
+Unity 6 desktop companion frontend. Streams chat from hermes-agent (localhost:8642), synthesizes speech via a selectable TTS provider — Fish-Speech (localhost:8092, default) or Irodori-TTS (localhost:8091) — and animates a VRM avatar.
 
 ## Quick Reference
 
@@ -34,15 +34,17 @@ unity-cli test --mode PlayMode            # Run PlayMode tests
 
 ```
 Assets/MATE ENGINE - Scripts/
-  OpenaiCompatibleAgent/      # Unified chat-agent module (22 files, ns: OpenaiCompatibleAgent)
-    Backend/                  # Backend integration (7 files, asmdef: OpenaiCompatibleAgent.Backend)
-      HermesResponseClient.cs # OpenAI SDK wrapper
-      StreamingOrchestrator.cs# Main orchestrator
+  OpenaiCompatibleAgent/      # Unified chat-agent module (ns: OpenaiCompatibleAgent)
+    Backend/                  # Backend integration (asmdef: OpenaiCompatibleAgent.Backend)
+      HermesResponseClient.cs # OpenAI Responses API client
+      StreamingOrchestrator.cs# Main orchestrator + TTS provider selection
       SentenceChunker.cs      # Sentence boundary detection
       Preprocessor.cs         # Text cleanup + emotion detection
-      IrodoriClient.cs        # TTS HTTP client
+      ITtsClient.cs           # Provider-neutral TTS seam (text → WAV)
+      IrodoriClient.cs        # Irodori TTS client (:8091, multipart) — ITtsClient
+      FishSpeechClient.cs     # Fish-Speech TTS client (:8092, JSON) — ITtsClient
       FastBunkaiSidecarClient.cs # Sidecar for /eos
-      TtsRequestQueue.cs      # Sequence-preserving TTS queue
+      TtsRequestQueue.cs      # Sequence-preserving TTS queue (over ITtsClient)
     Api/SessionApiClient.cs   # REST client for hermes sessions
     Chat/DmpChatController.cs # Chat UI controller
     Expression/
@@ -56,6 +58,7 @@ Assets/MATE ENGINE - Scripts/
       DraggablePanel.cs          # Draggable window base
       DmpChatMessageItem.cs      # Chat bubble renderer
       VoiceCatalogHandler.cs     # Voice dropdown (runtime voice selection)
+      TtsProviderHandler.cs      # TTS-provider dropdown (Fish-Speech / Irodori)
       *.prefab                   # ChatHistoryItem, SessionItem, VoiceItem
     ScreenCapture/            # Screen capture (text-only, image input unwired)
   Settings/                   # Settings UI
@@ -94,21 +97,13 @@ Editor/                       # Editor tools
 ## Log Prefixes
 
 - `[Hermes]` — orchestrator
+- `[FishSpeech]` — Fish-Speech TTS client
+- `[Irodori]` — Irodori TTS client
 - `[SessionPanel]` — session UI
 - `[SessionAPI]` — REST client
 - `[TTS]` — audio playback
 - `[Voice]` — voice catalog handler
-
-## UI Architecture Principle
-
-**Agent cannot see Unity scene objects.** Therefore:
-
-1. Write C# logic (MonoBehaviour scripts)
-2. Tell the user **exactly which GameObject** to attach each script to
-3. Tell the user **which Inspector fields** to assign
-4. Let the user wire Button.onClick, Toggle.onValueChanged etc. in the Inspector
-
-**Do NOT** try to programmatically find and wire deeply nested scene objects. This causes errors because the agent cannot verify the hierarchy.
+- `[TtsProvider]` — TTS-provider dropdown
 
 ## UI Pattern: Template-Based Cloning
 
@@ -156,6 +151,7 @@ No CI pipeline. Validation is manual via unity-cli.
 - Composes: chunker, preprocessor, TTS queue, audio player
 - Entry point: `SendAsync(text, onTokenDelta, onTurnComplete, onError, ct)`
 - `CurrentVoiceId` property — runtime voice override; falls back to serialized `referenceVoiceId` Inspector default. Set by `VoiceCatalogHandler`.
+- `CurrentProvider` property (`TtsProvider` enum) — runtime TTS provider, default Fish-Speech (serialized `defaultProvider`). `ResolveActiveClient` picks `fishSpeechClient` / `irodoriClient`; `EnsureTtsQueue` rebuilds the queue (cancelling the old one) when the provider changes at a turn boundary. Set by `TtsProviderHandler`. Resets to `defaultProvider` on domain reload; re-seeded from saved settings on startup.
 - Resets TTS player between turns
 
 **SentenceChunker** (`OpenaiCompatibleAgent/Backend/SentenceChunker.cs`)
@@ -168,12 +164,23 @@ No CI pipeline. Validation is manual via unity-cli.
 - Collapses whitespace, trims
 - Detects first emoji from known set, extracts emotion
 
-**IrodoriClient** (`OpenaiCompatibleAgent/Backend/IrodoriClient.cs`)
+**ITtsClient** (`OpenaiCompatibleAgent/Backend/ITtsClient.cs`)
+- Provider-neutral seam: `Task<byte[]> SynthesizeAsync(string text, string referenceId, CancellationToken ct)` → WAV bytes (null on failure)
+- Implemented by `IrodoriClient` and `FishSpeechClient`; `TtsRequestQueue` and `StreamingOrchestrator` depend on it (not on a concrete client)
+
+**IrodoriClient** (`OpenaiCompatibleAgent/Backend/IrodoriClient.cs`) — `ITtsClient`
 - Multipart POST to `http://localhost:8091/synthesize`
 - Attaches reference voice MP3 from `D:\codes\waifu\references_voices\<voice_id>\merged_audio.mp3`
 - Returns WAV bytes (48 kHz mono 16-bit PCM)
 - Inspector fields: `irodoriBaseUrl`, `voicesRootPath`, `defaultVoiceId`
-- Public getters: `VoicesRootPath`, `DefaultVoiceId` (consumed by `VoiceCatalogHandler`)
+- Public getters: `VoicesRootPath`, `DefaultVoiceId` (consumed by `VoiceCatalogHandler`); log prefix `[Irodori]`
+
+**FishSpeechClient** (`OpenaiCompatibleAgent/Backend/FishSpeechClient.cs`) — `ITtsClient`
+- JSON POST to `http://localhost:8092/v1/audio/speech` (vLLM-omni `fishaudio/s2-pro`)
+- Body: `{ model, input, voice, response_format:"wav" }`; `voice` = server-registered preset (same 16 ids as Irodori), so no reference-audio upload
+- Returns WAV bytes (44.1 kHz mono); `HealthCheckAsync` → GET `/health`; log prefix `[FishSpeech]`
+- Inspector fields: `baseUrl` (default `http://localhost:8092`), `modelId`, `defaultVoiceId`, `responseFormat`, `language`
+- Pure static `BuildRequest(...)` maps params → request DTO (unit-tested)
 
 **TtsRequestQueue** (`OpenaiCompatibleAgent/Backend/TtsRequestQueue.cs`)
 - Sequence-preserving TTS request queue
@@ -252,6 +259,7 @@ uv run --with httpx python -c "import httpx; r=httpx.get('http://127.0.0.1:8091/
 
 ## Recent Changes
 
+- **Fish-Speech-S2-Pro TTS provider (selectable, default)** [2026-05-31]: New `FishSpeechClient` (`:8092` `/v1/audio/speech`, JSON, 44.1 kHz WAV) behind a provider-neutral `ITtsClient` seam that `IrodoriClient` also implements (its unused per-call tuning params were dropped from the public method). `StreamingOrchestrator` gained a `TtsProvider` enum + `CurrentProvider` (default Fish-Speech) + `EnsureTtsQueue` (rebuilds/cancels the queue on a provider switch at the turn boundary). Settings dropdown `TtsProviderHandler` persists `ttsProvider`; `SettingsHandlerHermes` holds `fishSpeechClient` + an optional base-URL input (`fishSpeechBaseUrl`). Voice ids are identical across providers (1:1). Tests: `FishSpeechClientTests`, `StreamingOrchestratorProviderTests`, plus the `FishSpeechSmokeRunner` editor menu (live `:8092`). Design/plan: `docs/superpowers/specs|plans/2026-05-30-fish-speech-tts-provider*`. Verification: 0 new compile errors; new unit tests green; live smoke returned a valid 44.1 kHz WAV.
 - **`Hermes/` + `DesktopMatePlus/` → `OpenaiCompatibleAgent/` merge** [2026-05-26]: Folder + namespace consolidation. All 22 .cs files now under `Assets/MATE ENGINE - Scripts/OpenaiCompatibleAgent/` (Backend/, Api/, Chat/, Expression/, UI/, ScreenCapture/), and all share namespace `OpenaiCompatibleAgent`. Backend keeps its own asmdef (`OpenaiCompatibleAgent.Backend.asmdef`) at `Backend/` scope only — placing it at the module root would have pulled UI/Chat code under it and broken `using TMPro;` + `UniversalBlendshapes` from Assembly-CSharp. Class names unchanged (`HermesResponseClient`, `DmpChatController`, etc.) to minimize blast radius — rename is a separate optional follow-up. Test asmdef filename unchanged (`Hermes.Editor.Tests.asmdef`); its `references` array now points at `OpenaiCompatibleAgent.Backend`. See `refactor_openai_compatible_agent.md` for the full plan. Verification: 0 compile errors, baseline 215/248 test pass rate preserved exactly (the 33 failures are all pre-existing VRM/UniGLTF model-file-missing issues unrelated to this refactor).
 - **Voice catalog UI (Option B)** [2026-05-16]: Chat-side TMP_Dropdown for runtime voice selection. `StreamingOrchestrator.CurrentVoiceId` overrides serialized `referenceVoiceId`; selection persisted via `SaveLoadHandler.selectedVoiceId`. Inspector wiring guide: `.sisyphus/plans/voice-catalog-ui-wiring.md`. Affects next turn only (not mid-turn switching).
 - **Keyframe pipeline retired** [2026-05-16]: Deleted `Keyframe.cs`, `EmotionMapper.cs`, `emotion_motion_map.yaml`, `EmotionMapperTests.cs`. Removed `List<Keyframe>` parameter from `TtsRequestQueue.Enqueue/OnResult`, `TtsAudioPlayer.OnWavChunkStarted/EnqueueWavBytes`, and `EmotionCrossfader.HandleChunkStarted`. Removed `emotionMapper` field from `StreamingOrchestrator`. Rationale: keyframes were never consumed; emotion-only crossfade is sufficient.

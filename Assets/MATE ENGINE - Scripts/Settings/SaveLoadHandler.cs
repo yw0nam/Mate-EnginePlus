@@ -186,10 +186,17 @@ public class SaveLoadHandler : MonoBehaviour
         public int hermesPort = 8642;
         public string hermesApiKey = "hermes_api_key";
         public string hermesModelId = "hermes-agent";
+        // Reasoning effort: none/minimal/low/medium/high/xhigh ("none" => omit from request).
+        public string reasoningEffort = "low";
+        // Hermes provider-routing model (sent as hermes_model). Empty => no override (server default).
+        public string hermesModel = "";
 
         // Irodori TTS
         public string irodoriBaseUrl = "http://localhost:8091";
         public string voicesRootPath = "D:\\codes\\waifu\\references_voices";
+        // TTS provider selection (enum name; parsed defensively, default Fish-Speech).
+        public string ttsProvider = "FishSpeech";
+        public string fishSpeechBaseUrl = "http://localhost:8092";
 
         // Streaming / TTS behavior
         public int sentenceMinChunkLength = 50;
@@ -254,7 +261,11 @@ public class SaveLoadHandler : MonoBehaviour
         if (data.hermesPort <= 0) data.hermesPort = 8642;
         if (string.IsNullOrEmpty(data.hermesApiKey)) data.hermesApiKey = "hermes_api_key";
         if (string.IsNullOrEmpty(data.hermesModelId)) data.hermesModelId = "hermes-agent";
+        if (string.IsNullOrEmpty(data.reasoningEffort)) data.reasoningEffort = "low";
+        if (data.hermesModel == null) data.hermesModel = "";
         if (string.IsNullOrEmpty(data.irodoriBaseUrl)) data.irodoriBaseUrl = "http://localhost:8091";
+        if (string.IsNullOrEmpty(data.fishSpeechBaseUrl)) data.fishSpeechBaseUrl = "http://localhost:8092";
+        if (string.IsNullOrEmpty(data.ttsProvider)) data.ttsProvider = "FishSpeech";
         if (string.IsNullOrEmpty(data.voicesRootPath)) data.voicesRootPath = "D:\\codes\\waifu\\references_voices";
         if (data.sentenceMinChunkLength <= 0) data.sentenceMinChunkLength = 50;
         if (data.ttsBarrierTimeoutSeconds <= 0f) data.ttsBarrierTimeoutSeconds = 30f;

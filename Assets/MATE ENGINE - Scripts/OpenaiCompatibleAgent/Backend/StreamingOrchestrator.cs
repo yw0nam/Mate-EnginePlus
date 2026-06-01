@@ -4,10 +4,11 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
-using Utilities.Async;
 
 namespace OpenaiCompatibleAgent
 {
+    public enum TtsProvider { FishSpeech, Irodori }
+
     /// <summary>
     /// Coordinates Hermes streaming text, sentence chunking, emotion mapping, Irodori TTS, and audio playback.
     /// </summary>
@@ -22,6 +23,8 @@ namespace OpenaiCompatibleAgent
         [SerializeField] private HermesResponseClient hermesClient;
         [SerializeField] private IrodoriClient irodoriClient;
         [SerializeField] private FastBunkaiSidecarClient sidecarClient;
+        [SerializeField] private FishSpeechClient fishSpeechClient;
+        [SerializeField] private TtsProvider defaultProvider = TtsProvider.FishSpeech;
 
         [Header("Processing")]
         [SerializeField] private Component ttsAudioPlayer;
@@ -35,6 +38,37 @@ namespace OpenaiCompatibleAgent
         /// Falls back to <see cref="referenceVoiceId"/> when null or empty.
         /// </summary>
         public string CurrentVoiceId { get; set; }
+
+        private TtsProvider _currentProvider;
+        private bool _providerSet;
+
+        /// <summary>
+        /// Runtime TTS provider. Before any UI sets it, returns the Inspector
+        /// <c>defaultProvider</c>. Applied at the next turn boundary.
+        /// Not persisted on the component: resets to <c>defaultProvider</c> on domain reload;
+        /// TtsProviderHandler re-seeds it from saved settings on startup.
+        /// </summary>
+        public TtsProvider CurrentProvider
+        {
+            get => _providerSet ? _currentProvider : defaultProvider;
+            set { _currentProvider = value; _providerSet = true; }
+        }
+
+        private ITtsClient _clientForQueue;
+
+        /// <summary>Parses a persisted provider name; falls back to Fish-Speech for unknown/blank/out-of-range values.</summary>
+        public static TtsProvider ParseProvider(string value)
+        {
+            if (Enum.TryParse(value, out TtsProvider parsed) && Enum.IsDefined(typeof(TtsProvider), parsed))
+                return parsed;
+            return TtsProvider.FishSpeech;
+        }
+
+        /// <summary>Selects the client for a provider (Irodori → irodori, otherwise Fish-Speech).</summary>
+        public static ITtsClient ResolveActiveClient(TtsProvider provider, ITtsClient fishSpeech, ITtsClient irodori)
+        {
+            return provider == TtsProvider.Irodori ? irodori : fishSpeech;
+        }
 
         /// <summary>
         /// Sentence chunker min length. Applied on the next turn (chunker is
@@ -74,6 +108,7 @@ namespace OpenaiCompatibleAgent
 
         private void Awake()
         {
+            MainThreadContext.EnsureCaptured();
             EnsureComposed();
             if (string.IsNullOrEmpty(CurrentVoiceId))
                 CurrentVoiceId = referenceVoiceId;
@@ -122,14 +157,14 @@ namespace OpenaiCompatibleAgent
             {
                 _ttsQueue?.Reset();
                 var cb = onError;
-                SyncContextUtility.RunOnUnityThread(() => cb?.Invoke("Request cancelled."));
+                MainThreadContext.RunOnUnityThread(() => cb?.Invoke("Request cancelled."));
             }
             catch (Exception ex)
             {
                 _ttsQueue?.Reset();
                 var cb = onError;
                 var msg = ex.Message;
-                SyncContextUtility.RunOnUnityThread(() => cb?.Invoke(msg));
+                MainThreadContext.RunOnUnityThread(() => cb?.Invoke(msg));
             }
         }
 
@@ -144,11 +179,26 @@ namespace OpenaiCompatibleAgent
             {
                 _chunker = CreateChunker();
             }
+        }
 
-            if (_ttsQueue == null && irodoriClient != null)
+        private void EnsureTtsQueue()
+        {
+            ITtsClient active = ResolveActiveClient(CurrentProvider, fishSpeechClient, irodoriClient);
+            if (active == null)
             {
-                _ttsQueue = new TtsRequestQueue(irodoriClient);
+                throw new InvalidOperationException(
+                    $"Active TTS provider '{CurrentProvider}' has no client assigned. " +
+                    "Assign fishSpeechClient / irodoriClient on the StreamingOrchestrator in the Inspector.");
+            }
+
+            if (_ttsQueue == null || !ReferenceEquals(_clientForQueue, active))
+            {
+                // Cancel any in-flight work from the previous provider's queue so its
+                // late completions don't leak stale audio into the next turn.
+                _ttsQueue?.Reset();
+                _ttsQueue = new TtsRequestQueue(active);
                 _ttsQueue.OnResult = HandleTtsResult;
+                _clientForQueue = active;
             }
         }
 
@@ -159,16 +209,7 @@ namespace OpenaiCompatibleAgent
                 throw new InvalidOperationException("HermesResponseClient is not assigned.");
             }
 
-            if (irodoriClient == null)
-            {
-                throw new InvalidOperationException("IrodoriClient is not assigned.");
-            }
-
-            if (_ttsQueue == null)
-            {
-                _ttsQueue = new TtsRequestQueue(irodoriClient);
-                _ttsQueue.OnResult = HandleTtsResult;
-            }
+            EnsureTtsQueue();
 
             _chunker = CreateChunker();
             _ttsQueue.Reset();
@@ -235,13 +276,13 @@ namespace OpenaiCompatibleAgent
                 Debug.Log(string.Format(
                     "[Orchestrator] phase=after-barrier tid={0} unityTid={1} isMain={2} hasSyncCtx={3}",
                     Thread.CurrentThread.ManagedThreadId,
-                    SyncContextUtility.UnityThreadId,
-                    SyncContextUtility.IsMainThread,
+                    MainThreadContext.UnityThreadId,
+                    MainThreadContext.IsMainThread,
                     SynchronizationContext.Current != null));
 
                 var completeCallback = _onTurnComplete;
                 var tcs = _turnTcs;
-                SyncContextUtility.RunOnUnityThread(() =>
+                MainThreadContext.RunOnUnityThread(() =>
                 {
                     try
                     {
@@ -271,7 +312,7 @@ namespace OpenaiCompatibleAgent
             // when invoked from an awaited continuation it may run off-main.
             var errorCallback = _onError;
             var tcs = _turnTcs;
-            SyncContextUtility.RunOnUnityThread(() =>
+            MainThreadContext.RunOnUnityThread(() =>
             {
                 try
                 {
