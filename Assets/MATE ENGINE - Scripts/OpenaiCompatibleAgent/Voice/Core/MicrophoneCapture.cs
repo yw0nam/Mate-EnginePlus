@@ -27,21 +27,24 @@ namespace OpenaiCompatibleAgent.Voice
 
         public bool Start()
         {
-            if (Microphone.devices == null || Microphone.devices.Length == 0)
+            var devices = Microphone.devices;
+            if (devices == null || devices.Length == 0)
             {
-                Debug.LogWarning("[Voice] No microphone device available.");
+                Debug.LogWarning("[Voice][Mic] No microphone device available.");
                 return false;
             }
+
             _clip = Microphone.Start(_device, true, ClipLengthSec, SampleRate);
             if (_clip == null)
             {
-                Debug.LogWarning("[Voice] Microphone.Start failed.");
+                Debug.LogWarning("[Voice][Mic] Microphone.Start returned null.");
                 return false;
             }
             _clipBuffer = new float[_clip.samples * _clip.channels];
             _readPos = 0;
             _carryCount = 0;
             IsRecording = true;
+            Debug.Log($"[Voice][Mic] started: device='{(_device ?? "(default)")}' requestedRate={SampleRate} clip.frequency={_clip.frequency} channels={_clip.channels}");
             return true;
         }
 

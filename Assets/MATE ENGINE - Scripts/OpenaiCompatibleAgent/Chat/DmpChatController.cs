@@ -58,6 +58,8 @@ namespace OpenaiCompatibleAgent
         private readonly List<GameObject> _messageObjects = new();
         private DmpChatMessageItem _activeAIBubble;
         private bool _isStreaming;
+        /// <summary>True from send until the turn's response.completed/onError fires. Used by voice input to gate the mic.</summary>
+        public bool IsStreaming => _isStreaming;
         private bool _connected;
         private CancellationTokenSource _turnCts;
 

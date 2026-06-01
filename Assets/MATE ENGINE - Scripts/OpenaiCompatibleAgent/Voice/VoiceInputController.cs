@@ -45,12 +45,19 @@ namespace OpenaiCompatibleAgent.VoiceRuntime
         VadSegmenter _segmenter;
         AsrClient _asr;
         bool _listening;
-        bool _awaitingResponse;
-        float _awaitingSince;
         bool _transcribing;
+        bool _wasGated;
 
         void Awake()
         {
+            // Keep the voice pipeline alive regardless of the chat/settings panel's visibility.
+            // VoiceInput lives under the chat canvas, so toggling that panel off deactivates this
+            // GameObject — Update() stops and OnDisable() cuts the mic. This is a logic-only object
+            // (no UI of its own; its serialized scene references stay valid after reparenting), so
+            // detach it to the scene root at startup so it never deactivates with the panel.
+            if (transform.parent != null)
+                transform.SetParent(null, false);
+
             _asr = new AsrClient(asrBaseUrl, model);
             try { _vad = SileroVad.FromStreamingAssets(); }
             catch (System.Exception e) { Debug.LogWarning($"[Voice] Silero load failed: {e.Message}"); }
@@ -65,9 +72,11 @@ namespace OpenaiCompatibleAgent.VoiceRuntime
                 speechPadMs = speechPadMs,
                 maxSpeechMs = maxSpeechMs
             });
+            _segmenter.OnSpeechStart += () => Debug.Log("[Voice][Seg] speech START detected");
             _segmenter.OnSpeechEnd += OnUtterance;
 
             _mic = new MicrophoneCapture(micDeviceName);
+            Debug.Log($"[Voice] Awake done. vad={(_vad != null ? "OK" : "NULL")} mode={mode} asr={asrBaseUrl} micDevice='{(string.IsNullOrEmpty(micDeviceName) ? "(default)" : micDeviceName)}'");
             UpdateColor();
         }
 
@@ -88,10 +97,11 @@ namespace OpenaiCompatibleAgent.VoiceRuntime
             if (_vad == null) { Debug.LogWarning("[Voice] VAD unavailable; cannot listen."); _listening = false; return; }
             _vad.ResetState();
             _segmenter.Reset();
-            _mic.Start();
+            bool ok = _mic.Start();
+            Debug.Log($"[Voice] StartMic -> mic.Start()={ok} isRecording={_mic.IsRecording}");
         }
 
-        void StopMic() => _mic.Stop();
+        void StopMic() => _mic?.Stop();
 
         void Update()
         {
@@ -104,12 +114,17 @@ namespace OpenaiCompatibleAgent.VoiceRuntime
             }
 
             bool ttsPlaying = ttsAudioPlayer != null && ttsAudioPlayer.IsPlaying;
-            // Once TTS starts, IsPlaying governs the gate. Otherwise wait only briefly for a
-            // response that may produce no TTS (text-only turn / TTS down) rather than blocking long.
-            if (ttsPlaying) _awaitingResponse = false;
-            else if (_awaitingResponse && Time.time - _awaitingSince > 8f) _awaitingResponse = false;
+            bool aiStreaming = dmpChatController != null && dmpChatController.IsStreaming;
+            // Pause the mic whenever a turn is in flight — transcribing the user's utterance, the
+            // AI generating its reply, or the AI speaking it back (TTS) — and resume only once all
+            // three are idle. This is driven by the real turn state (response.completed clears
+            // IsStreaming), not a timeout.
+            bool gated = _transcribing || aiStreaming || ttsPlaying;
 
-            bool gated = ttsPlaying || _awaitingResponse;
+            // Turn just finished (gate released): start the next utterance from a clean VAD state
+            // rather than the frozen state left from before the turn.
+            if (_wasGated && !gated) { _vad?.ResetState(); _segmenter.Reset(); }
+            _wasGated = gated;
 
             if (mode == VoiceInputMode.AlwaysOn && _mic.IsRecording)
             {
@@ -140,13 +155,25 @@ namespace OpenaiCompatibleAgent.VoiceRuntime
 
         async void OnUtterance(float[] pcm)
         {
+            float durSec = pcm.Length / (float)MicrophoneCapture.SampleRate;
             byte[] wav = WavEncoder.Encode(pcm, MicrophoneCapture.SampleRate);
+            Debug.Log($"[Voice][ASR] speech END -> pcm={pcm.Length} samples ({durSec:F2}s) wav={wav.Length} bytes; sending to {asrBaseUrl}");
             _transcribing = true; UpdateColor();
             string text;
-            using (var cts = new CancellationTokenSource(60000))
-                text = await _asr.TranscribeAsync(wav, cts.Token);
+            try
+            {
+                using (var cts = new CancellationTokenSource(60000))
+                    text = await _asr.TranscribeAsync(wav, cts.Token);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[Voice][ASR] TranscribeAsync threw: {e.GetType().Name}: {e.Message}");
+                _transcribing = false; UpdateColor();
+                return;
+            }
             _transcribing = false;
 
+            Debug.Log($"[Voice][ASR] result='{text}' (len={(text == null ? -1 : text.Length)})");
             if (string.IsNullOrEmpty(text)) { Debug.Log("[Voice] empty transcription, skipping."); UpdateColor(); return; }
 
             InjectAndSend(text);
@@ -161,8 +188,6 @@ namespace OpenaiCompatibleAgent.VoiceRuntime
                 dmpChatController.inputField.text = text;
 
             dmpChatController.OnSendClicked();
-            _awaitingResponse = true;
-            _awaitingSince = Time.time;
             UpdateColor();
             Debug.Log($"[Voice] submitted: {text}");
         }
