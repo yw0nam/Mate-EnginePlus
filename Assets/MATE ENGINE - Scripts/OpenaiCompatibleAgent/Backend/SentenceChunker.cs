@@ -63,7 +63,7 @@ namespace OpenaiCompatibleAgent
                 ApplyToolCallFilter();
             }
 
-            if (_buffer.Length == 0 || !ContainsSentenceEnder(_buffer) || !LastNonWhitespaceIsSentenceEnder())
+            if (_buffer.Length == 0 || !ContainsSentenceEnder(_buffer))
             {
                 return result;
             }
@@ -92,7 +92,7 @@ namespace OpenaiCompatibleAgent
                     }
                 }
 
-                if (!emitted || _buffer.Length == 0 || !LastNonWhitespaceIsSentenceEnder())
+                if (!emitted || _buffer.Length == 0 || !ContainsSentenceEnder(_buffer))
                 {
                     break;
                 }
@@ -221,19 +221,6 @@ namespace OpenaiCompatibleAgent
                 if (_sentenceEnders.Contains(builder[i]))
                 {
                     return true;
-                }
-            }
-
-            return false;
-        }
-
-        private bool LastNonWhitespaceIsSentenceEnder()
-        {
-            for (int i = _buffer.Length - 1; i >= 0; i--)
-            {
-                if (!char.IsWhiteSpace(_buffer[i]))
-                {
-                    return _sentenceEnders.Contains(_buffer[i]);
                 }
             }
 
