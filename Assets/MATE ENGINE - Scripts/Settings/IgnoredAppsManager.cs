@@ -27,9 +27,9 @@ public class AllowedAppsManager : MonoBehaviour
         enumerator = new MMDeviceEnumerator();
         UpdateDefaultDevice();
 
-        addToAllowedListButton.onClick.AddListener(() =>
+        if (addToAllowedListButton != null) addToAllowedListButton.onClick.AddListener(() =>
         {
-            if (runningAppsDropdown.options.Count == 0) return;
+            if (runningAppsDropdown == null || runningAppsDropdown.options.Count == 0) return;
 
             string selectedApp = runningAppsDropdown.options[runningAppsDropdown.value].text;
             if (!allowedApps.Contains(selectedApp))
@@ -56,6 +56,7 @@ public class AllowedAppsManager : MonoBehaviour
 
     private void RefreshRunningAppsDropdown()
     {
+        if (runningAppsDropdown == null) return;
         UpdateDefaultDevice(); // Ensure defaultDevice is fresh
 
         currentRunningAppNames = GetRunningAudioAppNames();
@@ -82,6 +83,7 @@ public class AllowedAppsManager : MonoBehaviour
 
     private void UpdateAllowedListUI()
     {
+        if (allowedAppsListContent == null) return;
         foreach (Transform child in allowedAppsListContent)
             Destroy(child.gameObject);
 
