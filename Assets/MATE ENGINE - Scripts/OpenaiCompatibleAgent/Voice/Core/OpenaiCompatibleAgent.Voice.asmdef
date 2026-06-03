@@ -1,0 +1,16 @@
+{
+    "name": "OpenaiCompatibleAgent.Voice",
+    "rootNamespace": "OpenaiCompatibleAgent.Voice",
+    "references": [
+        "com.github.asus4.onnxruntime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -2,12 +2,7 @@
     "name": "OpenaiCompatibleAgent.Backend",
     "rootNamespace": "OpenaiCompatibleAgent",
     "references": [
-        "Unity.Nuget.Newtonsoft.Json",
-        "OpenAI",
-        "Utilities.Async",
-        "Utilities.Rest",
-        "Utilities.Encoder.Wav",
-        "Utilities.Extensions"
+        "Unity.Nuget.Newtonsoft.Json"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

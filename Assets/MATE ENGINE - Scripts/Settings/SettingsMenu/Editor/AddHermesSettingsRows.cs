@@ -250,6 +250,8 @@ namespace MateEngine.SettingsEditor
             SetRef("hermesPortInput",    FindInAi<InputField>("HermesPort"));
             SetRef("hermesApiKeyInput",  FindInAi<InputField>("HermesApiKey"));
             SetRef("hermesModelIdInput", FindInAi<InputField>("HermesModelId"));
+            SetRef("reasoningEffortDropdown", FindInAi<TMPro.TMP_Dropdown>("ReasoningEffort"));
+            SetRef("hermesModelDropdown", FindInAi<TMPro.TMP_Dropdown>("HermesModel"));
             SetRef("hermesReinitializeButton", FindButtonUnder(FindGoInAi("HermesReinitialize")));
 
             // Irodori
@@ -412,6 +414,7 @@ namespace MateEngine.SettingsEditor
                 if (row.GetComponent<Slider>() != null)  size = new Vector2(500, 20);
                 else if (row.GetComponent<Toggle>() != null) size = new Vector2(160, 20);
                 else if (row.GetComponent<InputField>() != null) size = new Vector2(500, 28);
+                else if (row.GetComponent<TMPro.TMP_Dropdown>() != null) size = new Vector2(300, 30);
                 else size = new Vector2(200, 36); // HermesReinitialize wrapper
 
                 rt.sizeDelta = size;
@@ -504,7 +507,7 @@ namespace MateEngine.SettingsEditor
         // Order of widgets (top → bottom) inside the = AI section, directly below the
         // existing AI INPUT container.
         static readonly string[] LayoutOrder = new string[] {
-            "HermesHost", "HermesPort", "HermesApiKey", "HermesModelId",
+            "HermesHost", "HermesPort", "HermesApiKey", "HermesModelId", "ReasoningEffort", "HermesModel",
             "IrodoriBaseUrl", "VoicesRootPath",
             "ChatAiName", "ChatUserName",
             "SentenceMinChunkLength", "TtsBarrierTimeoutSeconds", "ChatMaxMessages",

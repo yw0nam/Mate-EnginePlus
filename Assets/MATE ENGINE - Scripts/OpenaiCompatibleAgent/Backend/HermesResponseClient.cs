@@ -1,44 +1,41 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Reflection;
+using System.IO;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
-using OpenAI;
-using OpenAI.Responses;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
-using Utilities.Async;
-using Utilities.WebRequestRest.Interfaces;
 
 namespace OpenaiCompatibleAgent
 {
-    // SDK compatibility note (Phase A2): com.openai.unity maps Response.OutputText
-    // only from the optional top-level "output_text" JSON field. hermes-agent
-    // returns OpenAI-compatible nested output[].content[].text instead, so smoke
-    // tests got an empty string despite a valid response. We log raw request/response
-    // JSON and fall back to walking the nested message content manually.
-
     /// <summary>
-    /// Thin MonoBehaviour wrapper around com.openai.unity's <see cref="OpenAIClient"/>
-    /// for the self-hosted hermes-agent server. The client is configured for the
-    /// Responses API at <c>http://localhost:8642/v1/responses</c> by default and
-    /// uses bearer authorization through the SDK's custom-domain settings.
+    /// Self-contained streaming client for an OpenAI Responses API endpoint (the self-hosted
+    /// hermes-agent server at <c>http://localhost:8642/v1/responses</c> by default).
     /// </summary>
     /// <remarks>
-    /// All streaming callbacks from the SDK are marshalled onto Unity's main
-    /// thread via <see cref="_mainThreadQueue"/>, matching the pattern used by
-    /// <c>DesktopMatePlusClient</c>.
-    ///
-    /// Streaming events map:
+    /// This deliberately uses NO third-party OpenAI SDK. It issues the HTTP POST itself and parses
+    /// the Server-Sent Events stream with a forward-only reader, extracting only the events a chat
+    /// front-end needs:
     /// <list type="bullet">
-    /// <item><description><c>response.created</c> - stores <see cref="Response.Id"/> as <see cref="LastResponseId"/>.</description></item>
-    /// <item><description><c>response.output_text.delta</c> - invokes the token delta callback.</description></item>
-    /// <item><description><c>response.completed</c> - invokes the completion callback.</description></item>
-    /// <item><description><c>response.failed</c> and <c>error</c> - invoke the error callback.</description></item>
-    /// <item><description><c>response.refusal.delta</c> - logs a warning and treats refusal text as a normal delta.</description></item>
+    /// <item><description><c>response.created</c> / <c>response.in_progress</c> — capture the response id for the <c>previous_response_id</c> chain.</description></item>
+    /// <item><description><c>response.output_text.delta</c> — incremental assistant text.</description></item>
+    /// <item><description><c>response.refusal.delta</c> — refusal text, surfaced as a normal delta.</description></item>
+    /// <item><description><c>response.completed</c> — turn finished.</description></item>
+    /// <item><description><c>response.failed</c> / <c>error</c> — failure.</description></item>
     /// </list>
+    /// Every other event type (<c>response.function_call_arguments.*</c>, <c>file_search.*</c>,
+    /// <c>code_interpreter.*</c>, <c>response.output_item.*</c>, <c>response.content_part.*</c>, …)
+    /// is ignored. Unknown fields are never read, so tool-augmented responses — including Hermes
+    /// returning <c>function_call_output.output</c> as an array — can no longer break parsing. That
+    /// array case is exactly what the previous com.openai.unity SDK choked on.
+    ///
+    /// All callbacks are marshalled onto Unity's main thread via <see cref="_mainThreadQueue"/>,
+    /// drained by <see cref="PumpMainThreadQueue"/> from <see cref="Update"/>.
     /// </remarks>
     [ExecuteAlways]
     public class HermesResponseClient : MonoBehaviour
@@ -51,68 +48,59 @@ namespace OpenaiCompatibleAgent
         [Header("Model")]
         [SerializeField] private string modelId = "hermes-agent";
         [SerializeField] private bool store = true;
+        [SerializeField] private string reasoningEffort = "low";
+        [SerializeField] private string hermesModel = "";
 
         /// <summary>
-        /// The most recent Responses API response id. Subsequent requests send
-        /// this value as <c>previous_response_id</c> so the server can continue
-        /// the conversation chain. Can also be set externally to restore a chain
-        /// after loading a historical session (see SessionPanelController.SelectSession).
+        /// The most recent Responses API response id. Subsequent requests send this value as
+        /// <c>previous_response_id</c> so the server continues the conversation chain. Can also be
+        /// set externally to restore a chain after loading a historical session
+        /// (see SessionPanelController.SelectSession).
         /// </summary>
         public string LastResponseId { get; set; }
 
-        /// <summary>
-        /// API key used to initialize <see cref="OpenAIAuthentication"/>.
-        /// </summary>
+        /// <summary>API key sent as the bearer token.</summary>
         public string ApiKey => apiKey;
 
-        /// <summary>
-        /// Host and port shown in the Inspector-friendly form used by hermes.
-        /// </summary>
+        /// <summary>Host and port in the Inspector-friendly <c>host:port</c> form.</summary>
         public string BaseDomain => $"{host}:{port}";
 
         public string Host { get => host; set => host = value; }
         public int Port { get => port; set => port = value; }
         public string ModelId { get => modelId; set => modelId = value; }
 
+        /// <summary>
+        /// Reasoning effort sent as <c>reasoning.effort</c> in the request body
+        /// (none/minimal/low/medium/high/xhigh). The value <c>"none"</c> (or empty)
+        /// omits the <c>reasoning</c> object entirely, deferring to the server default.
+        /// </summary>
+        public string ReasoningEffort { get => reasoningEffort; set => reasoningEffort = value; }
+
+        /// <summary>
+        /// Optional Hermes provider-routing model sent as <c>hermes_model</c> in the request body.
+        /// Empty means no override — the server uses its configured default for the API alias.
+        /// </summary>
+        public string HermesModel { get => hermesModel; set => hermesModel = value; }
+
         public void SetApiKey(string value) => apiKey = value;
 
-        /// <summary>
-        /// Rebuilds the underlying OpenAIClient using the current host/port/apiKey.
-        /// Call after mutating connection fields at runtime (e.g. from a settings menu).
-        /// </summary>
-        public void Reinitialize()
-        {
-            _client = null;
-            InitializeClient();
-        }
+        /// <summary>Rebuilds the cached base URL after mutating connection fields at runtime.</summary>
+        public void Reinitialize() => _baseUrl = BuildBaseUrl();
 
-        private OpenAIClient _client;
+        // Shared client. Infinite timeout because SSE streams stay open for the whole turn;
+        // cancellation is per-request via the CancellationToken.
+        private static readonly HttpClient _http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        private string _baseUrl;
         private readonly ConcurrentQueue<Action> _mainThreadQueue = new();
 
-        /// <summary>
-        /// Initializes the Unity OpenAI SDK client for the local hermes-agent
-        /// endpoint. The SDK's custom-domain constructor defaults to HTTPS, so
-        /// the domain is passed with an explicit <c>http://</c> scheme for the
-        /// local non-TLS server.
-        /// </summary>
-        private void Awake()
-        {
-            InitializeClient();
-        }
+        private void Awake() => _baseUrl = BuildBaseUrl();
+
+        private void Update() => PumpMainThreadQueue();
 
         /// <summary>
-        /// Executes all queued SDK callbacks on Unity's main thread.
-        /// </summary>
-        private void Update()
-        {
-            PumpMainThreadQueue();
-        }
-
-        /// <summary>
-        /// Drains the queued main-thread callbacks. Normally invoked by
-        /// <see cref="Update"/>, but Editor-mode smoke tests and Phase C
-        /// orchestrators can call this directly when <c>await Task.Delay</c>
-        /// would otherwise starve the MonoBehaviour update tick.
+        /// Drains queued callbacks on Unity's main thread. Normally invoked by <see cref="Update"/>,
+        /// but Editor-mode smoke tests can call it directly when <c>await Task.Delay</c> would
+        /// otherwise starve the MonoBehaviour update tick.
         /// </summary>
         public void PumpMainThreadQueue()
         {
@@ -123,29 +111,41 @@ namespace OpenaiCompatibleAgent
             }
         }
 
-        /// <summary>
-        /// Sends a user message to hermes-agent and streams token deltas through
-        /// main-thread callbacks.
-        /// </summary>
-        /// <param name="userText">The user's message.</param>
-        /// <param name="onTokenDelta">Called once per text delta on Unity's main thread.</param>
-        /// <param name="onComplete">Called once when the streamed response completes.</param>
-        /// <param name="onError">Called once when the SDK or server reports an error.</param>
-        /// <param name="ct">Optional cancellation token.</param>
+        private void Enqueue(Action action) => _mainThreadQueue.Enqueue(action);
+
+        private string BuildBaseUrl()
+        {
+            var h = (host ?? string.Empty).Trim();
+            if (h.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                h.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                var schemeLen = h.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ? 7 : 8;
+                var rest = h.Substring(schemeLen);
+                return rest.Contains(":") ? h.TrimEnd('/') : $"{h.TrimEnd('/')}:{port}";
+            }
+            return $"http://{h}:{port}";
+        }
+
+        private string EndpointUrl()
+        {
+            if (string.IsNullOrEmpty(_baseUrl)) _baseUrl = BuildBaseUrl();
+            return _baseUrl.TrimEnd('/') + "/v1/responses";
+        }
+
+        // ===================== Public send API =====================
+
+        /// <summary>Streams a user message; token deltas arrive through main-thread callbacks.</summary>
         public Task SendAsync(
             string userText,
             Action<string> onTokenDelta,
             Action onComplete,
             Action<string> onError,
             CancellationToken ct = default)
-        {
-            return SendAsync(userText, null, onTokenDelta, onComplete, onError, ct);
-        }
+            => SendAsync(userText, null, onTokenDelta, onComplete, onError, ct);
 
         /// <summary>
-        /// Multimodal overload: send a user message together with one or more
-        /// images encoded as base64 data URLs (e.g. <c>data:image/png;base64,...</c>).
-        /// Each URL becomes an <c>input_image</c> content item in the request.
+        /// Multimodal overload: send a user message together with one or more images encoded as
+        /// base64 data URLs. Each URL becomes an <c>input_image</c> content item.
         /// </summary>
         public async Task SendAsync(
             string userText,
@@ -155,87 +155,59 @@ namespace OpenaiCompatibleAgent
             Action<string> onError,
             CancellationToken ct = default)
         {
-            EnsureClient();
-
             var errorQueued = false;
-            var tokenDeltaQueued = false;
             var completionQueued = false;
+
             void QueueError(string message)
             {
-                if (errorQueued)
-                {
-                    return;
-                }
-
+                if (errorQueued || completionQueued) return;
                 errorQueued = true;
-                EnqueueMainThread(() => onError?.Invoke(message));
+                Enqueue(() => onError?.Invoke(message));
+            }
+
+            void QueueComplete()
+            {
+                if (completionQueued || errorQueued) return;
+                completionQueued = true;
+                Enqueue(() => onComplete?.Invoke());
             }
 
             try
             {
-                var request = CreateRequest(userText, imageDataUrls);
-                LogWireTrace("Streaming", "before-await", request);
-                var streamState = new StreamingState();
-                Func<string, IServerSentEvent, Task> handler = (eventType, sseEvent) =>
+                string body = BuildRequestBody(userText, imageDataUrls, stream: true);
+                Debug.Log($"[Hermes] POST {EndpointUrl()} ({body.Length} chars){(body.Length > 300 ? " body[0:300]=" + body.Substring(0, 300) + "…" : " body=" + body)}");
+
+                using (var request = new HttpRequestMessage(HttpMethod.Post, EndpointUrl()))
                 {
-                    HandleStreamEvent(
-                        eventType,
-                        sseEvent,
-                        streamState,
-                        delta =>
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+                    request.Headers.Accept.ParseAdd("text/event-stream");
+                    request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+
+                    using (var response = await _http
+                        .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
+                        .ConfigureAwait(false))
+                    {
+                        if (!response.IsSuccessStatusCode)
                         {
-                            tokenDeltaQueued = true;
-                            onTokenDelta?.Invoke(delta);
-                        },
-                        () =>
+                            string errBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                            QueueError($"HTTP {(int)response.StatusCode}: {errBody}");
+                            return;
+                        }
+
+                        using (var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                        using (var reader = new StreamReader(stream, Encoding.UTF8))
                         {
-                            completionQueued = true;
-                            onComplete?.Invoke();
-                        },
-                        QueueError);
-                    return Task.CompletedTask;
-                };
-
-                var response = await _client.ResponsesEndpoint
-                    .CreateModelResponseAsync(request, handler, ct)
-                    .ConfigureAwait(false);
-
-                LogWireTrace("Streaming", "after-await", null);
-                Debug.Log($"[Hermes] Response RAW: {Newtonsoft.Json.JsonConvert.SerializeObject(response)}");
-                Debug.Log($"[Hermes] Response.Id={response?.Id}, Status={response?.Status}, Output.Count={response?.Output?.Count}");
-
-                if (!string.IsNullOrEmpty(response?.Id))
-                {
-                    LastResponseId = response.Id;
+                            await ReadSseAsync(reader, onTokenDelta, QueueComplete, QueueError, ct).ConfigureAwait(false);
+                        }
+                    }
                 }
 
-                var fallbackText = ExtractOutputText(response);
-                if (!tokenDeltaQueued && !string.IsNullOrEmpty(fallbackText))
-                {
-                    EnqueueMainThread(() => onTokenDelta?.Invoke(fallbackText));
-                }
-
-                if (!completionQueued)
-                {
-                    EnqueueMainThread(() => onComplete?.Invoke());
-                }
+                // Stream ended without an explicit completed/failed/error event → still finish the turn.
+                QueueComplete();
             }
             catch (OperationCanceledException)
             {
                 QueueError("Request cancelled.");
-            }
-            catch (Newtonsoft.Json.JsonException e) when (tokenDeltaQueued)
-            {
-                // Hermes-agent sometimes returns function_call_output.output as
-                // an array of input_text parts, but the OpenAI SDK's
-                // ResponseItemConverter expects a flat string. The streamed
-                // text deltas already reached the UI, so treat the post-stream
-                // poll failure as completion instead of a hard error.
-                Debug.LogWarning($"[Hermes] Stream completed but post-stream poll JSON parse failed: {e.Message}");
-                if (!completionQueued)
-                {
-                    EnqueueMainThread(() => onComplete?.Invoke());
-                }
             }
             catch (Exception e)
             {
@@ -245,35 +217,34 @@ namespace OpenaiCompatibleAgent
         }
 
         /// <summary>
-        /// Sends a user message without streaming and returns the assembled
-        /// response text. This is intended for smoke tests and debugging.
+        /// Non-streaming send used by smoke tests/debugging. Returns the assembled assistant text.
         /// </summary>
-        /// <param name="userText">The user's message.</param>
-        /// <param name="ct">Optional cancellation token.</param>
-        /// <returns>The SDK response's assembled <see cref="Response.OutputText"/> value, or an empty string on failure.</returns>
         public async Task<string> SendNonStreamingAsync(string userText, CancellationToken ct = default)
         {
-            EnsureClient();
-
             try
             {
-                var request = CreateRequest(userText);
-                LogWireTrace("NonStreaming", "before-await", request);
-
-                var response = await _client.ResponsesEndpoint
-                    .CreateModelResponseAsync(request, (Func<string, IServerSentEvent, Task>)null, ct)
-                    .ConfigureAwait(false);
-
-                LogWireTrace("NonStreaming", "after-await", null);
-                Debug.Log($"[Hermes] Response RAW: {Newtonsoft.Json.JsonConvert.SerializeObject(response)}");
-                Debug.Log($"[Hermes] Response.Id={response?.Id}, Status={response?.Status}, Output.Count={response?.Output?.Count}");
-
-                if (!string.IsNullOrEmpty(response?.Id))
+                string body = BuildRequestBody(userText, null, stream: false);
+                using (var request = new HttpRequestMessage(HttpMethod.Post, EndpointUrl()))
                 {
-                    LastResponseId = response.Id;
-                }
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+                    request.Content = new StringContent(body, Encoding.UTF8, "application/json");
 
-                return ExtractOutputText(response);
+                    using (var response = await _http.SendAsync(request, HttpCompletionOption.ResponseContentRead, ct)
+                        .ConfigureAwait(false))
+                    {
+                        string respBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            Debug.LogError($"[Hermes] Non-streaming HTTP {(int)response.StatusCode}: {respBody}");
+                            return string.Empty;
+                        }
+
+                        var obj = JObject.Parse(respBody);
+                        var id = obj.Value<string>("id");
+                        if (!string.IsNullOrEmpty(id)) LastResponseId = id;
+                        return ExtractOutputText(obj);
+                    }
+                }
             }
             catch (OperationCanceledException)
             {
@@ -287,271 +258,228 @@ namespace OpenaiCompatibleAgent
             }
         }
 
-        /// <summary>
-        /// Clears <see cref="LastResponseId"/> so the next request starts a new
-        /// Responses API chain.
-        /// </summary>
-        public void Reset()
+        /// <summary>Clears <see cref="LastResponseId"/> so the next request starts a new chain.</summary>
+        public void Reset() => LastResponseId = null;
+
+        // ===================== SSE parsing =====================
+
+        private async Task ReadSseAsync(
+            StreamReader reader,
+            Action<string> onTokenDelta,
+            Action queueComplete,
+            Action<string> queueError,
+            CancellationToken ct)
         {
-            LastResponseId = null;
-        }
-
-        private static JsonSerializerSettings _sdkSerializerSettings;
-
-        private static JsonSerializerSettings GetSdkSerializerSettings()
-        {
-            if (_sdkSerializerSettings != null) return _sdkSerializerSettings;
-            try
+            var data = new StringBuilder();
+            string line;
+            while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
             {
-                var prop = typeof(OpenAIClient).GetProperty(
-                    "JsonSerializationOptions",
-                    BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
-                _sdkSerializerSettings = prop?.GetValue(null) as JsonSerializerSettings;
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[Hermes-Trace] reflection for JsonSerializationOptions failed: {e.Message}");
-            }
-            return _sdkSerializerSettings;
-        }
+                if (ct.IsCancellationRequested) throw new OperationCanceledException(ct);
 
-        private void LogWireTrace(string flow, string phase, object request)
-        {
-            try
-            {
-                var tid = Thread.CurrentThread.ManagedThreadId;
-                var isMain = SyncContextUtility.IsMainThread;
-                var unityTid = SyncContextUtility.UnityThreadId;
-                var hasSyncCtx = SynchronizationContext.Current != null;
-                var ctxType = SynchronizationContext.Current?.GetType().Name ?? "<null>";
-                var isPlaying = isMain ? Application.isPlaying.ToString() : "<off-main>";
-                Debug.Log(
-                    $"[Hermes-Trace] flow={flow} phase={phase} tid={tid} unityTid={unityTid} " +
-                    $"isMain={isMain} syncCtx={ctxType} hasSyncCtx={hasSyncCtx} isPlaying={isPlaying}");
-
-                if (request != null)
+                if (line.Length == 0)
                 {
-                    var sdkSettings = GetSdkSerializerSettings();
-                    var realPayload = sdkSettings != null
-                        ? JsonConvert.SerializeObject(request, sdkSettings)
-                        : JsonConvert.SerializeObject(request);
-                    Debug.Log($"[Hermes-Trace] {flow} real-wire JSON: {realPayload}");
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[Hermes-Trace] LogWireTrace failed: {e}");
-            }
-        }
-
-        private void InitializeClient()
-        {
-            var auth = new OpenAIAuthentication(apiKey);
-            var settings = new OpenAISettings(domain: BuildSdkDomain());
-            _client = new OpenAIClient(auth, settings);
-            Debug.Log($"[Hermes] OpenAI client initialized for {settings.BaseRequestUrlFormat}");
-        }
-
-        private void EnsureClient()
-        {
-            if (_client == null)
-            {
-                InitializeClient();
-            }
-        }
-
-        private CreateResponseRequest CreateRequest(string userText)
-        {
-            return CreateRequest(userText, null);
-        }
-
-        private CreateResponseRequest CreateRequest(string userText, IReadOnlyList<string> imageDataUrls)
-        {
-            string text = userText ?? string.Empty;
-            string prevId = string.IsNullOrEmpty(LastResponseId) ? null : LastResponseId;
-
-            // Text-only fast path keeps the simple ctor that downstream tests rely on.
-            if (imageDataUrls == null || imageDataUrls.Count == 0)
-            {
-                return new CreateResponseRequest(
-                    textInput: text,
-                    model: modelId,
-                    previousResponseId: prevId,
-                    store: store);
-            }
-
-            // Multimodal: build a single user Message with a TextContent + one
-            // ImageContent per data URL. ImageContent(string) wraps the URL
-            // directly so we serialize as {"type":"input_image","image_url":"..."}.
-            var content = new List<IResponseContent>(imageDataUrls.Count + 1)
-            {
-                new OpenAI.Responses.TextContent(text, ResponseContentType.InputText)
-            };
-            for (int i = 0; i < imageDataUrls.Count; i++)
-            {
-                string url = imageDataUrls[i];
-                if (string.IsNullOrEmpty(url))
-                {
+                    // Blank line terminates one event.
+                    if (data.Length > 0)
+                    {
+                        bool terminal = DispatchEvent(data.ToString(), onTokenDelta, queueComplete, queueError);
+                        data.Clear();
+                        if (terminal) return;
+                    }
                     continue;
                 }
-                content.Add(new ImageContent(imageUrl: url));
+
+                // Accumulate "data:" payload lines; ignore "event:", "id:", and ":" comments.
+                if (line.StartsWith("data:", StringComparison.Ordinal))
+                {
+                    var payload = line.Substring(5);
+                    if (payload.Length > 0 && payload[0] == ' ') payload = payload.Substring(1);
+                    if (data.Length > 0) data.Append('\n');
+                    data.Append(payload);
+                }
             }
 
-            var message = new Message(Role.User, content);
-            return new CreateResponseRequest(
-                input: (IResponseItem)message,
-                model: modelId,
-                previousResponseId: prevId,
-                store: store);
+            // Flush a trailing event with no terminating blank line.
+            if (data.Length > 0)
+                DispatchEvent(data.ToString(), onTokenDelta, queueComplete, queueError);
         }
 
-        // Per-request state. The SDK's TextContent.Delta and RefusalContent.Delta
-        // setters accumulate (`delta += value`) so reading them on each SSE event
-        // yields the cumulative string. We track the previous cumulative value and
-        // emit only the increment so downstream consumers (SentenceChunker, UI)
-        // receive raw incremental tokens.
-        private sealed class StreamingState
-        {
-            public string PreviousTextDelta = string.Empty;
-            public string PreviousRefusalDelta = string.Empty;
-        }
-
-        private void HandleStreamEvent(
-            string eventType,
-            IServerSentEvent sseEvent,
-            StreamingState state,
+        /// <summary>Parses one SSE data payload and fires callbacks. Returns true if terminal.</summary>
+        private bool DispatchEvent(
+            string json,
             Action<string> onTokenDelta,
-            Action onComplete,
-            Action<string> reportError)
+            Action queueComplete,
+            Action<string> queueError)
         {
-            Debug.Log("[H-evt] type=" + eventType + " sseType=" + (sseEvent == null ? "null" : sseEvent.GetType().FullName));
-            switch (eventType)
+            if (json == "[DONE]")
+            {
+                queueComplete();
+                return true;
+            }
+
+            JObject obj;
+            try { obj = JObject.Parse(json); }
+            catch { return false; } // ignore frames we can't parse — never fatal
+
+            var type = obj.Value<string>("type");
+            if (string.IsNullOrEmpty(type)) return false;
+
+            switch (type)
             {
                 case "response.created":
-                    if (sseEvent is Response createdResponse && !string.IsNullOrEmpty(createdResponse.Id))
-                    {
-                        EnqueueMainThread(() => LastResponseId = createdResponse.Id);
-                    }
-                    break;
+                case "response.in_progress":
+                {
+                    var id = obj["response"]?.Value<string>("id");
+                    if (!string.IsNullOrEmpty(id)) Enqueue(() => LastResponseId = id);
+                    return false;
+                }
 
                 case "response.output_text.delta":
-                    if (sseEvent is OpenAI.Responses.TextContent textContent)
-                    {
-                        var cumulative = textContent.Delta ?? string.Empty;
-                        var increment = cumulative.StartsWith(state.PreviousTextDelta, StringComparison.Ordinal)
-                            ? cumulative.Substring(state.PreviousTextDelta.Length)
-                            : cumulative;
-                        state.PreviousTextDelta = cumulative;
-                        if (increment.Length > 0)
-                        {
-                            EnqueueMainThread(() => onTokenDelta?.Invoke(increment));
-                        }
-                    }
-                    break;
-
-                case "response.completed":
-                    if (sseEvent is Response completedResponse && !string.IsNullOrEmpty(completedResponse.Id))
-                    {
-                        EnqueueMainThread(() => LastResponseId = completedResponse.Id);
-                    }
-                    EnqueueMainThread(() => onComplete?.Invoke());
-                    break;
-
-                case "response.failed":
-                    reportError(GetResponseErrorMessage(sseEvent));
-                    break;
+                {
+                    var delta = obj.Value<string>("delta");
+                    if (!string.IsNullOrEmpty(delta)) Enqueue(() => onTokenDelta?.Invoke(delta));
+                    return false;
+                }
 
                 case "response.refusal.delta":
-                    if (sseEvent is RefusalContent refusalContent)
-                    {
-                        var cumulative = refusalContent.Delta ?? string.Empty;
-                        var increment = cumulative.StartsWith(state.PreviousRefusalDelta, StringComparison.Ordinal)
-                            ? cumulative.Substring(state.PreviousRefusalDelta.Length)
-                            : cumulative;
-                        state.PreviousRefusalDelta = cumulative;
-                        if (increment.Length > 0)
+                {
+                    var delta = obj.Value<string>("delta");
+                    if (!string.IsNullOrEmpty(delta))
+                        Enqueue(() =>
                         {
-                            EnqueueMainThread(() =>
-                            {
-                                Debug.LogWarning($"[Hermes] Response refusal delta: {increment}");
-                                onTokenDelta?.Invoke(increment);
-                            });
-                        }
-                    }
-                    break;
+                            Debug.LogWarning($"[Hermes] Response refusal delta: {delta}");
+                            onTokenDelta?.Invoke(delta);
+                        });
+                    return false;
+                }
+
+                case "response.completed":
+                {
+                    var id = obj["response"]?.Value<string>("id");
+                    if (!string.IsNullOrEmpty(id)) Enqueue(() => LastResponseId = id);
+                    queueComplete();
+                    return true;
+                }
+
+                case "response.incomplete":
+                {
+                    // HITL interrupt: the agent paused for human approval (metadata.interrupt
+                    // carries the request). We keep the response id for chaining and end the turn
+                    // cleanly. The approve/reject/edit resume flow is a separate FE feature.
+                    var id = obj["response"]?.Value<string>("id");
+                    if (!string.IsNullOrEmpty(id)) Enqueue(() => LastResponseId = id);
+                    var interrupt = obj["response"]?["metadata"]?["interrupt"];
+                    Debug.LogWarning($"[Hermes] response.incomplete (HITL interrupt){(interrupt != null ? ": " + interrupt.ToString(Formatting.None) : "")}");
+                    queueComplete();
+                    return true;
+                }
+
+                case "response.failed":
+                {
+                    var msg = obj["response"]?["error"]?.Value<string>("message") ?? "Hermes response failed.";
+                    queueError(msg);
+                    return true;
+                }
 
                 case "error":
-                    var message = sseEvent is Error error ? error.Message : GetResponseErrorMessage(sseEvent);
-                    reportError(message);
-                    break;
-            }
-        }
-
-        private static string GetResponseErrorMessage(IServerSentEvent sseEvent)
-        {
-            if (sseEvent is Response response && response.Error != null)
-            {
-                return response.Error.Message;
-            }
-
-            if (sseEvent is Error error)
-            {
-                return error.Message;
-            }
-
-            return sseEvent == null ? "Unknown Hermes response error." : sseEvent.ToString();
-        }
-
-        private static string ExtractOutputText(Response response)
-        {
-            if (!string.IsNullOrEmpty(response?.OutputText))
-            {
-                return response.OutputText;
-            }
-
-            if (response?.Output == null)
-            {
-                return string.Empty;
-            }
-
-            var builder = new StringBuilder();
-            foreach (var item in response.Output)
-            {
-                if (item is not Message message || message.Content == null)
                 {
-                    continue;
+                    var msg = obj.Value<string>("message")
+                              ?? obj["error"]?.Value<string>("message")
+                              ?? "Hermes stream error.";
+                    var code = obj.Value<string>("code");
+                    queueError(string.IsNullOrEmpty(code) ? msg : $"{code}: {msg}");
+                    return true;
                 }
 
-                foreach (var content in message.Content)
+                default:
+                    return false; // function_call_*, file_search_*, code_interpreter_*, item/part events, etc.
+            }
+        }
+
+        // ===================== Request / response bodies =====================
+
+        private string BuildRequestBody(string userText, IReadOnlyList<string> imageDataUrls, bool stream)
+        {
+            var root = new JObject
+            {
+                ["model"] = modelId,
+                ["store"] = store,
+                ["stream"] = stream,
+                ["tool_choice"] = "none",
+                ["truncation"] = "auto",
+            };
+
+            // reasoning.effort — "none"/empty omits the object so the server default applies.
+            if (!string.IsNullOrEmpty(reasoningEffort) &&
+                !string.Equals(reasoningEffort, "none", StringComparison.OrdinalIgnoreCase))
+                root["reasoning"] = new JObject { ["effort"] = reasoningEffort };
+
+            // hermes_model — empty means no override (server default for the API alias);
+            // provider is inferred server-side from the model name.
+            if (!string.IsNullOrEmpty(hermesModel))
+                root["hermes_model"] = hermesModel;
+
+            if (!string.IsNullOrEmpty(LastResponseId))
+                root["previous_response_id"] = LastResponseId;
+
+            string text = userText ?? string.Empty;
+
+            if (imageDataUrls == null || imageDataUrls.Count == 0)
+            {
+                // Text-only fast path: input is a plain string.
+                root["input"] = text;
+            }
+            else
+            {
+                // Multimodal: a single user message with a text part + one input_image per data URL.
+                var content = new JArray
                 {
-                    if (content is OpenAI.Responses.TextContent textContent)
+                    new JObject { ["type"] = "input_text", ["text"] = text }
+                };
+                foreach (var url in imageDataUrls)
+                {
+                    if (string.IsNullOrEmpty(url)) continue;
+                    content.Add(new JObject { ["type"] = "input_image", ["image_url"] = url });
+                }
+
+                var message = new JObject
+                {
+                    ["type"] = "message",
+                    ["role"] = "user",
+                    ["content"] = content
+                };
+                root["input"] = new JArray { message };
+            }
+
+            return root.ToString(Formatting.None);
+        }
+
+        /// <summary>
+        /// Walks a non-streaming Response JSON for assistant text. Prefers the convenience
+        /// <c>output_text</c> field, otherwise concatenates <c>output[].content[].text</c>.
+        /// </summary>
+        private static string ExtractOutputText(JObject response)
+        {
+            var top = response.Value<string>("output_text");
+            if (!string.IsNullOrEmpty(top)) return top;
+
+            var output = response["output"] as JArray;
+            if (output == null) return string.Empty;
+
+            var builder = new StringBuilder();
+            foreach (var item in output)
+            {
+                if (item["content"] is not JArray content) continue;
+                foreach (var part in content)
+                {
+                    var partType = part.Value<string>("type");
+                    if (partType == "output_text" || partType == "text")
                     {
-                        builder.Append(textContent.Text ?? textContent.Delta);
+                        var t = part.Value<string>("text");
+                        if (!string.IsNullOrEmpty(t)) builder.Append(t);
                     }
                 }
             }
-
             return builder.ToString();
-        }
-
-        private void EnqueueMainThread(Action action)
-        {
-            _mainThreadQueue.Enqueue(action);
-        }
-
-        private string BuildSdkDomain()
-        {
-            var trimmedHost = (host ?? string.Empty).Trim();
-
-            if (trimmedHost.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                trimmedHost.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            {
-                var schemeLength = trimmedHost.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ? 7 : 8;
-                var withoutScheme = trimmedHost.Substring(schemeLength);
-                return withoutScheme.Contains(":") ? trimmedHost : $"{trimmedHost}:{port}";
-            }
-
-            return $"http://{trimmedHost}:{port}";
         }
     }
 }

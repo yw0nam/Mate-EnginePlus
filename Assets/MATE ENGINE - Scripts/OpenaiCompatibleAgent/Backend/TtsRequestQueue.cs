@@ -7,7 +7,7 @@ using UnityEngine;
 namespace OpenaiCompatibleAgent
 {
     /// <summary>
-    /// Starts Irodori synthesis requests concurrently, then emits completed WAVs in sequence order.
+    /// Starts TTS synthesis requests concurrently, then emits completed WAVs in sequence order.
     /// </summary>
     /// <remarks>
     /// The emit cursor starts at sequence 0 for each turn. Callers that use a different first sequence
@@ -15,7 +15,7 @@ namespace OpenaiCompatibleAgent
     /// </remarks>
     public class TtsRequestQueue
     {
-        private readonly IIrodoriClient _irodori;
+        private readonly ITtsClient _tts;
         private readonly object _lock = new object();
         private readonly List<PendingRequest> _pending = new List<PendingRequest>();
         private readonly SortedDictionary<int, TtsResult> _completed = new SortedDictionary<int, TtsResult>();
@@ -23,9 +23,9 @@ namespace OpenaiCompatibleAgent
         private int _nextSeqToEmit;
         private int _generation;
 
-        public TtsRequestQueue(IIrodoriClient irodori)
+        public TtsRequestQueue(ITtsClient tts)
         {
-            _irodori = irodori ?? throw new ArgumentNullException(nameof(irodori));
+            _tts = tts ?? throw new ArgumentNullException(nameof(tts));
         }
 
         public Action<int, byte[], string> OnResult { get; set; }
@@ -126,7 +126,7 @@ namespace OpenaiCompatibleAgent
             byte[] wav = null;
             try
             {
-                wav = await _irodori.SynthesizeAsync(text, referenceId, null, null, null, null, cts.Token);
+                wav = await _tts.SynthesizeAsync(text, referenceId, cts.Token);
             }
             catch (OperationCanceledException)
             {

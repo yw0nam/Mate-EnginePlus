@@ -14,7 +14,7 @@ namespace OpenaiCompatibleAgent.Tests
         [Test]
         public async Task Enqueue_PreservesSequence_EvenIfCompletionReordered()
         {
-            FakeIrodoriClient fake = new FakeIrodoriClient();
+            FakeTtsClient fake = new FakeTtsClient();
             fake.SetDelay(0, TimeSpan.FromMilliseconds(300));
             fake.SetDelay(1, TimeSpan.FromMilliseconds(100));
             fake.SetDelay(2, TimeSpan.FromMilliseconds(200));
@@ -35,7 +35,7 @@ namespace OpenaiCompatibleAgent.Tests
         [Test]
         public async Task WaitBarrierAsync_TimesOutAndCancelsStragglers()
         {
-            FakeIrodoriClient fake = new FakeIrodoriClient(TimeSpan.FromSeconds(60));
+            FakeTtsClient fake = new FakeTtsClient(TimeSpan.FromSeconds(60));
             TtsRequestQueue queue = new TtsRequestQueue(fake);
             List<byte[]> emitted = new List<byte[]>();
             queue.OnResult = (seq, wav, emotion) => emitted.Add(wav);
@@ -53,7 +53,7 @@ namespace OpenaiCompatibleAgent.Tests
         [Test]
         public async Task Reset_ClearsState()
         {
-            FakeIrodoriClient fake = new FakeIrodoriClient(TimeSpan.FromMilliseconds(10));
+            FakeTtsClient fake = new FakeTtsClient(TimeSpan.FromMilliseconds(10));
             TtsRequestQueue queue = new TtsRequestQueue(fake);
             List<int> emitted = new List<int>();
             queue.OnResult = (seq, wav, emotion) => emitted.Add(seq);
@@ -71,17 +71,17 @@ namespace OpenaiCompatibleAgent.Tests
             Assert.AreEqual(0, emitted[2]);
         }
 
-        private sealed class FakeIrodoriClient : IIrodoriClient
+        private sealed class FakeTtsClient : ITtsClient
         {
             private readonly Dictionary<int, TimeSpan> _delayBySeq = new Dictionary<int, TimeSpan>();
             private readonly TimeSpan _defaultDelay;
 
-            public FakeIrodoriClient()
+            public FakeTtsClient()
                 : this(TimeSpan.Zero)
             {
             }
 
-            public FakeIrodoriClient(TimeSpan defaultDelay)
+            public FakeTtsClient(TimeSpan defaultDelay)
             {
                 _defaultDelay = defaultDelay;
             }
@@ -91,14 +91,7 @@ namespace OpenaiCompatibleAgent.Tests
                 _delayBySeq[sequence] = delay;
             }
 
-            public async Task<byte[]> SynthesizeAsync(
-                string text,
-                string referenceId = null,
-                float? seconds = null,
-                int? numSteps = null,
-                float? cfgScaleText = null,
-                float? cfgScaleSpeaker = null,
-                CancellationToken ct = default)
+            public async Task<byte[]> SynthesizeAsync(string text, string referenceId, CancellationToken ct)
             {
                 int sequence = int.Parse(text);
                 TimeSpan delay = _delayBySeq.TryGetValue(sequence, out TimeSpan configuredDelay) ? configuredDelay : _defaultDelay;
